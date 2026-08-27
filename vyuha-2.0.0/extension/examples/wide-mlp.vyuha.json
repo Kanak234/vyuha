@@ -1,0 +1,15 @@
+{
+  "meta": {
+    "name": "Wide MLP",
+    "note": "a plain feed-forward classifier · edit any number and the graph rebuilds"
+  },
+  "seed": 7,
+  "layers": [
+    { "id": "in",  "name": "Features",   "kind": "input",  "n": 12 },
+    { "id": "h1",  "name": "Hidden 1",   "kind": "relu",   "n": 32 },
+    { "id": "h2",  "name": "Hidden 2",   "kind": "relu",   "n": 24 },
+    { "id": "h3",  "name": "Hidden 3",   "kind": "dense",  "n": 16 },
+    { "id": "out", "name": "Classes",    "kind": "output", "n": 4,
+      "labels": ["cat", "dog", "bird", "fish"] }
+  ]
+}

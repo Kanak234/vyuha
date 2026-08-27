@@ -1,0 +1,16 @@
+.vscode/**
+.gitignore
+node_modules/**
+src/**
+tests/**
+scripts/**
+harness.js
+tsconfig.json
+package-lock.json
+**/*.ts
+**/*.map
+**/__pycache__/**
+*.vsix
+install.sh
+install.ps1
+START-HERE.md

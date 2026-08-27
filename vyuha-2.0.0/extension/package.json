@@ -1,0 +1,203 @@
+{
+  "name": "vyuha",
+  "displayName": "VYUHA",
+  "description": "Run your code in any language and watch it draw itself in 3D — data structures, algorithms, and neural networks.",
+  "version": "2.0.0",
+  "publisher": "kanak",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": { "color": "#070a11", "theme": "dark" },
+  "repository": { "type": "git", "url": "https://github.com/Kanak234/vyuha.git" },
+  "bugs": { "url": "https://github.com/Kanak234/vyuha/issues" },
+  "homepage": "https://github.com/Kanak234/vyuha#readme",
+  "engines": { "vscode": "^1.84.0" },
+  "categories": ["Visualization", "Education", "Data Science", "Machine Learning", "Debuggers"],
+  "keywords": [
+    "visualization", "data structures", "algorithm", "linked list", "binary tree",
+    "graph", "sorting", "code runner", "neural network", "transformer", "three.js"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:json",
+    "onLanguage:jsonc",
+    "onLanguage:python",
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:java",
+    "onLanguage:cpp",
+    "onLanguage:c",
+    "onLanguage:go",
+    "onLanguage:rust"
+  ],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "vyuha.editor",
+        "displayName": "VYUHA Graph",
+        "selector": [
+          { "filenamePattern": "*.vyuha.json" },
+          { "filenamePattern": "*.vyuha" },
+          { "filenamePattern": "*.netgraph.json" },
+          { "filenamePattern": "*.netgraph" }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      { "command": "vyuha.runAndVisualize", "title": "Run and Visualize", "category": "VYUHA", "icon": "$(run-all)" },
+      { "command": "vyuha.stopRun", "title": "Stop Running Program", "category": "VYUHA", "icon": "$(debug-stop)" },
+      { "command": "vyuha.rerun", "title": "Re-run Last Program", "category": "VYUHA", "icon": "$(debug-restart)" },
+      { "command": "vyuha.showOutput", "title": "Show Program Output", "category": "VYUHA", "icon": "$(output)" },
+      { "command": "vyuha.addHelperLibrary", "title": "Add Helper Library to This Project", "category": "VYUHA", "icon": "$(library)" },
+      { "command": "vyuha.openExample", "title": "Open an Example", "category": "VYUHA", "icon": "$(book)" },
+      { "command": "vyuha.playPause", "title": "Play / Pause Timeline", "category": "VYUHA", "icon": "$(debug-pause)" },
+      { "command": "vyuha.stepNext", "title": "Next Frame", "category": "VYUHA", "icon": "$(chevron-right)" },
+      { "command": "vyuha.stepPrev", "title": "Previous Frame", "category": "VYUHA", "icon": "$(chevron-left)" },
+      { "command": "vyuha.open", "title": "Open Graph View", "category": "VYUHA", "icon": "$(circuit-board)" },
+      { "command": "vyuha.runInference", "title": "Run Inference", "category": "VYUHA", "icon": "$(play)" },
+      { "command": "vyuha.newInput", "title": "New Input Vector", "category": "VYUHA", "icon": "$(refresh)" },
+      { "command": "vyuha.tracePath", "title": "Trace Decision Path", "category": "VYUHA", "icon": "$(type-hierarchy)" },
+      { "command": "vyuha.exportTrace", "title": "Export Trace as JSON", "category": "VYUHA", "icon": "$(save-as)" },
+      { "command": "vyuha.fetchLiveTrace", "title": "Pull Trace from Endpoint", "category": "VYUHA", "icon": "$(cloud-download)" },
+      { "command": "vyuha.newSpecFile", "title": "New Network Spec File", "category": "VYUHA", "icon": "$(new-file)" },
+      { "command": "vyuha.revealLayer", "title": "Reveal Layer in Editor", "category": "VYUHA" },
+      { "command": "vyuha.focusLayer", "title": "Focus Layer in Graph", "category": "VYUHA" },
+      { "command": "vyuha.gotoFrame", "title": "Go to Frame", "category": "VYUHA" }
+    ],
+    "keybindings": [
+      { "command": "vyuha.runAndVisualize", "key": "ctrl+alt+v", "mac": "cmd+alt+v", "when": "editorTextFocus" },
+      { "command": "vyuha.stopRun", "key": "ctrl+alt+x", "mac": "cmd+alt+x" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "vyuha", "title": "VYUHA", "icon": "media/icon.svg" }
+      ]
+    },
+    "views": {
+      "vyuha": [
+        { "id": "vyuha.layers", "name": "Structure", "icon": "media/icon.svg", "contextualTitle": "VYUHA" }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "vyuha.layers",
+        "contents": "Nothing is being visualized yet.\n\nOpen any source file and run it:\n[Run and Visualize](command:vyuha.runAndVisualize)\n\nYour program draws itself by printing one line per frame:\n`@vyuha {\"kind\":\"tree\",\"nodes\":[...],\"edges\":[...]}`\n\n[Add helper library](command:vyuha.addHelperLibrary)\n[Open an example](command:vyuha.openExample)\n[New network spec](command:vyuha.newSpecFile)"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        { "command": "vyuha.runAndVisualize", "group": "navigation@1" }
+      ],
+      "editor/title": [
+        { "command": "vyuha.open", "when": "resourceExtname == .json && resourceFilename =~ /vyuha|netgraph/", "group": "navigation" }
+      ],
+      "editor/context": [
+        { "command": "vyuha.runAndVisualize", "group": "vyuha@1" }
+      ],
+      "explorer/context": [
+        { "command": "vyuha.runAndVisualize", "group": "vyuha@1" }
+      ],
+      "view/title": [
+        { "command": "vyuha.runAndVisualize", "when": "view == vyuha.layers", "group": "navigation@1" },
+        { "command": "vyuha.stepPrev", "when": "view == vyuha.layers && vyuha.hasFrames", "group": "navigation@2" },
+        { "command": "vyuha.playPause", "when": "view == vyuha.layers && vyuha.hasFrames", "group": "navigation@3" },
+        { "command": "vyuha.stepNext", "when": "view == vyuha.layers && vyuha.hasFrames", "group": "navigation@4" },
+        { "command": "vyuha.newInput", "when": "view == vyuha.layers && !vyuha.hasFrames", "group": "navigation@5" },
+        { "command": "vyuha.tracePath", "when": "view == vyuha.layers && !vyuha.hasFrames", "group": "navigation@6" },
+        { "command": "vyuha.stopRun", "when": "view == vyuha.layers", "group": "1_run" },
+        { "command": "vyuha.showOutput", "when": "view == vyuha.layers", "group": "1_run" },
+        { "command": "vyuha.exportTrace", "when": "view == vyuha.layers", "group": "2_export" },
+        { "command": "vyuha.fetchLiveTrace", "when": "view == vyuha.layers", "group": "2_export" },
+        { "command": "vyuha.addHelperLibrary", "when": "view == vyuha.layers", "group": "3_help" },
+        { "command": "vyuha.openExample", "when": "view == vyuha.layers", "group": "3_help" }
+      ],
+      "view/item/context": [
+        { "command": "vyuha.revealLayer", "when": "view == vyuha.layers && viewItem == layer", "group": "inline" }
+      ],
+      "commandPalette": [
+        { "command": "vyuha.revealLayer", "when": "false" },
+        { "command": "vyuha.focusLayer", "when": "false" },
+        { "command": "vyuha.gotoFrame", "when": "false" }
+      ]
+    },
+    "configuration": {
+      "title": "VYUHA",
+      "properties": {
+        "vyuha.runners": {
+          "type": "object",
+          "default": {},
+          "markdownDescription": "Override or add a run command per file extension. Merged over the built-in table, so you only list what you want to change.\n\nPlaceholders: `${file}`, `${dir}`, `${fileBasename}`, `${fileBasenameNoExt}`, `${bin}` (a temporary executable path).\n\nExample:\n```json\n{ \"py\": \"conda run -n ml python -u \\\"${file}\\\"\", \"kt\": \"kotlin \\\"${file}\\\"\" }\n```",
+          "additionalProperties": { "type": "string" }
+        },
+        "vyuha.runCwd": {
+          "type": "string",
+          "enum": ["file", "workspace"],
+          "enumDescriptions": [
+            "Run in the folder that holds the file.",
+            "Run in the first workspace folder."
+          ],
+          "default": "file",
+          "description": "Working directory for the program."
+        },
+        "vyuha.runTimeout": {
+          "type": "number",
+          "default": 120,
+          "minimum": 0,
+          "description": "Kill the program after this many seconds. 0 means never."
+        },
+        "vyuha.maxFrames": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 1,
+          "description": "Stop collecting frames after this many, so a runaway loop cannot fill memory."
+        },
+        "vyuha.autoPlay": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start playing the timeline as soon as the program finishes."
+        },
+        "vyuha.frameDelay": {
+          "type": "number",
+          "default": 420,
+          "minimum": 30,
+          "maximum": 4000,
+          "description": "Milliseconds each frame is held during playback."
+        },
+        "vyuha.clearOutputOnRun": {
+          "type": "boolean",
+          "default": true,
+          "description": "Clear the VYUHA output channel before each run."
+        },
+        "vyuha.speed": {
+          "type": "number", "default": 1, "minimum": 0.25, "maximum": 3,
+          "description": "How fast the signal crosses a neural network."
+        },
+        "vyuha.glow": { "type": "boolean", "default": true, "description": "Render the bloom pass. Turn off on a low-power GPU." },
+        "vyuha.autoOrbit": { "type": "boolean", "default": true, "description": "Rotate the camera slowly while idle." },
+        "vyuha.labels": { "type": "boolean", "default": true, "description": "Show floating labels." },
+        "vyuha.syncCursor": { "type": "boolean", "default": true, "description": "Focus the layer under the cursor when you move through a spec file." },
+        "vyuha.revealOnClick": { "type": "boolean", "default": true, "description": "Jump to the line that defines a layer when you click one of its units." },
+        "vyuha.traceEndpoint": {
+          "type": "string", "default": "",
+          "description": "HTTP endpoint returning a live activation trace, e.g. http://127.0.0.1:8000/trace. Leave empty to run the forward pass locally."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vendor": "node scripts/vendor-three.js",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run vendor && npm run compile",
+    "package": "vsce package",
+    "test": "node tests/render-smoke.js && node tests/ds-smoke.js && node tests/runner-test.js",
+    "verify": "npm run vendor && npm run compile && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.84.0",
+    "jsdom": "^24.0.0",
+    "three": "0.128.0",
+    "typescript": "^5.3.3"
+  }
+}

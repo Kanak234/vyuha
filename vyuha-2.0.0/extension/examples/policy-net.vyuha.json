@@ -1,0 +1,79 @@
+{
+  "meta": {
+    "name": "policy-net",
+    "note": "3 encoder blocks, 6-action policy head"
+  },
+  "seed": 20260826,
+  "layers": [
+    {
+      "id": "tok",
+      "name": "Token input",
+      "kind": "input",
+      "n": 8
+    },
+    {
+      "id": "emb",
+      "name": "Embedding",
+      "kind": "dense",
+      "n": 14
+    },
+    {
+      "id": "a1",
+      "name": "Attention · 01",
+      "kind": "attn",
+      "n": 12
+    },
+    {
+      "id": "n1",
+      "name": "Add & norm",
+      "kind": "norm",
+      "n": 8,
+      "residualFrom": "emb"
+    },
+    {
+      "id": "f1",
+      "name": "Feed forward · 01",
+      "kind": "ffn",
+      "n": 16
+    },
+    {
+      "id": "a2",
+      "name": "Attention · 02",
+      "kind": "attn",
+      "n": 12
+    },
+    {
+      "id": "n2",
+      "name": "Add & norm",
+      "kind": "norm",
+      "n": 8,
+      "residualFrom": "f1"
+    },
+    {
+      "id": "f2",
+      "name": "Feed forward · 02",
+      "kind": "ffn",
+      "n": 16
+    },
+    {
+      "id": "h1",
+      "name": "Hidden · relu",
+      "kind": "relu",
+      "n": 20
+    },
+    {
+      "id": "out",
+      "name": "Policy head",
+      "kind": "output",
+      "n": 6,
+      "labels": [
+        "Go to food",
+        "Eat",
+        "Hide",
+        "Flee",
+        "Idle",
+        "Sleep"
+      ]
+    }
+  ]
+}
