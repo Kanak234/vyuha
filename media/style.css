@@ -320,3 +320,14 @@ body[data-mode="ds"] #legendDs{display:block}
   #caption{margin:0 0 6px 10px;max-width:72vw}
   #timeline .rng{display:none}
 }
+
+/* GIF export progress, shown inline on the timeline toolbar */
+.exportMsg {
+  font-size: 12px;
+  color: #8fd6ff;
+  margin-left: 6px;
+  opacity: 0;
+  transition: opacity .2s ease;
+  white-space: nowrap;
+}
+.exportMsg.on { opacity: 1; }

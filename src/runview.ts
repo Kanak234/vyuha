@@ -116,6 +116,9 @@ export function buildHtml(webview: vscode.Webview, extUri: vscode.Uri, mode: 'ne
     <button class="btn on" id="tLabels">Labels</button>
     <button class="btn on" id="tGlow">Glow</button>
     <button class="btn" id="tReset">Reset view</button>
+    <div class="sep"></div>
+    <button class="btn" id="tGif" title="Export the whole run as an animated GIF">Export GIF</button>
+    <span id="exportMsg" class="exportMsg"></span>
   </div>
 
   <div class="panel enter" id="caption">
@@ -134,6 +137,7 @@ export function buildHtml(webview: vscode.Webview, extUri: vscode.Uri, mode: 'ne
 <script nonce="${nonce}" src="${media('three.min.js')}"></script>
 <script nonce="${nonce}" src="${media('bridge.js')}"></script>
 <script nonce="${nonce}" src="${media('main.js')}"></script>
+<script nonce="${nonce}" src="${media('gifenc.js')}"></script>
 <script nonce="${nonce}" src="${media('ds.js')}"></script>
 </body>
 </html>`;
@@ -158,6 +162,7 @@ export type RunEvent =
   | { kind: 'select'; view: RunView; id: string; label: string; line?: number }
   | { kind: 'error'; view: RunView; message: string }
   | { kind: 'export'; view: RunView; payload: unknown }
+  | { kind: 'gif'; view: RunView; b64: string; frames: number; source: string }
   | { kind: 'dispose'; view: RunView };
 
 /** A panel bound to a program run rather than to a document. */
@@ -215,6 +220,7 @@ export class RunView {
   warn(message: string) { this.post({ type: 'warn', message }); }
   gotoFrame(i: number) { this.post({ type: 'goto', index: i }); }
   command(name: string) { this.post({ type: 'cmd', name }); }
+  exportGif() { this.post({ type: 'cmd', name: 'exportGif' }); }
   pushConfig() { this.post({ type: 'config', config: readConfig() }); }
 
   private post(msg: unknown) {
@@ -242,6 +248,13 @@ export class RunView {
         break;
       case 'export':
         this.onEvent({ kind: 'export', view: this, payload: m.payload });
+        break;
+      case 'gif':
+        this.onEvent({
+          kind: 'gif', view: this,
+          b64: String(m.b64 ?? ''), frames: Number(m.frames) || 0,
+          source: String(m.source ?? '')
+        });
         break;
       case 'error':
         this.onEvent({ kind: 'error', view: this, message: String(m.message ?? '') });

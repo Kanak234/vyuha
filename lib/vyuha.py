@@ -133,3 +133,133 @@ def frame(nodes, edges=None, kind="graph", title=None, note=None, line=None):
     """Full control: give the nodes and edges yourself."""
     payload = {"kind": kind, "nodes": nodes, "edges": edges or []}
     emit(_meta(payload, title, note, None, None, line))
+
+
+# ── recursion tracing ────────────────────────────────────────────
+#
+# Wrap a recursive function and VYUHA draws its call tree as it runs: each
+# call becomes a node the moment it is entered, turns "active" while it runs,
+# and settles to "done" carrying its return value when it unwinds. No manual
+# drawing — decorate the function and call it.
+#
+#     from vyuha import recursive
+#
+#     @recursive()
+#     def fib(n):
+#         if n < 2:
+#             return n
+#         return fib(n - 1) + fib(n - 2)
+#
+#     fib(6)
+
+__all__.append("recursive")
+__all__.append("RecursionTracer")
+
+
+class RecursionTracer:
+    """Builds the growing call tree behind @recursive. Rarely used directly."""
+
+    def __init__(self, name="recursion", hold=None):
+        self.name = name
+        self.hold = hold
+        self._id = 0
+        self._nodes = {}          # id -> {id,label,state,note,parent,value}
+        self._order = []          # ids in creation order (stable layout)
+        self._stack = []          # active call ids
+
+    def _new_id(self):
+        self._id += 1
+        return "c" + str(self._id)
+
+    def _label(self, fn, args, kwargs):
+        parts = [repr(a) for a in args]
+        parts += [k + "=" + repr(v) for k, v in kwargs.items()]
+        inside = ", ".join(parts)
+        if len(inside) > 24:
+            inside = inside[:23] + "…"
+        return fn + "(" + inside + ")"
+
+    def enter(self, fn, args, kwargs):
+        cid = self._new_id()
+        parent = self._stack[-1] if self._stack else None
+        self._nodes[cid] = {
+            "id": cid, "label": self._label(fn, args, kwargs),
+            "state": "active", "parent": parent, "value": None,
+            "depth": len(self._stack)
+        }
+        self._order.append(cid)
+        self._stack.append(cid)
+        self._emit(note="call " + self._nodes[cid]["label"])
+        return cid
+
+    def exit(self, cid, result):
+        node = self._nodes.get(cid)
+        if node is not None:
+            node["state"] = "done"
+            try:
+                r = repr(result)
+            except Exception:
+                r = str(result)
+            if len(r) > 18:
+                r = r[:17] + "…"
+            node["value"] = r
+            node["label"] = node["label"] + " → " + r
+        if self._stack and self._stack[-1] == cid:
+            self._stack.pop()
+        # reactivate the caller so the "current" call is always highlighted
+        if self._stack:
+            top = self._nodes.get(self._stack[-1])
+            if top and top["state"] == "done":
+                top["state"] = "active"
+        self._emit(note=("return " + (node["value"] if node else "")))
+
+    def _emit(self, note=None):
+        nodes = []
+        edges = []
+        for cid in self._order:
+            n = self._nodes[cid]
+            nodes.append({
+                "id": n["id"], "label": n["label"], "state": n["state"],
+                "note": ("depth " + str(n["depth"]))
+            })
+            if n["parent"]:
+                edges.append({"from": n["parent"], "to": n["id"],
+                              "state": "done" if n["state"] == "done" else "active",
+                              "directed": True})
+        payload = {"kind": "tree", "nodes": nodes, "edges": edges,
+                   "title": self.name, "layout": "recursion"}
+        if note is not None:
+            payload["note"] = note
+        emit(payload)
+
+
+def recursive(name=None, hold=None):
+    """
+    Decorator that draws a function's recursion as a call tree.
+
+    Every entry adds a child node under its caller; every return settles the
+    node with its value. Works with any recursion shape (linear, binary,
+    mutual — pass the same tracer to both functions for mutual recursion).
+    """
+    def decorate(fn):
+        tracer = RecursionTracer(name or getattr(fn, "__name__", "recursion"), hold)
+
+        def wrapper(*args, **kwargs):
+            cid = tracer.enter(getattr(fn, "__name__", "fn"), args, kwargs)
+            try:
+                result = fn(*args, **kwargs)
+            except Exception as exc:
+                node = tracer._nodes.get(cid)
+                if node:
+                    node["state"] = "error"
+                    node["label"] = node["label"] + " ✗"
+                tracer._emit(note="raised " + type(exc).__name__)
+                raise
+            tracer.exit(cid, result)
+            return result
+
+        wrapper.__name__ = getattr(fn, "__name__", "wrapper")
+        wrapper.__doc__ = getattr(fn, "__doc__", None)
+        wrapper._vyuha_tracer = tracer
+        return wrapper
+    return decorate
