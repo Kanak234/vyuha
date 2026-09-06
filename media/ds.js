@@ -72,7 +72,7 @@
   var camera = new THREE.PerspectiveCamera(50, aspect(), 0.1, 600);
   var renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: true });
   } catch (err) {
     $('fail').style.display = 'grid';
     return;
@@ -726,6 +726,8 @@
     rig.goalYaw = 0.62; rig.goalPitch = 0.42;
     fitCamera(true);
   });
+  var gifBtn = $('tGif');
+  if (gifBtn) gifBtn.addEventListener('click', function () { exportGif(); });
   $('closeInspect').addEventListener('click', closeInspect);
 
   window.addEventListener('keydown', function (e) {
@@ -865,12 +867,86 @@
             payload: { source: S.file, frames: S.frames, exportedAt: new Date().toISOString() }
           });
         }
+        else if (m.name === 'exportGif') {
+          exportGif();
+        }
         break;
 
       default:
         break;
     }
   });
+
+  /* ── GIF export ───────────────────────────────────────────────
+   * Walk the timeline, render each frame to the canvas, downscale it to a
+   * capped width, and hand the pixels to the offline GIF encoder. Everything
+   * runs off the animation loop with explicit renders so what lands in the
+   * file is exactly a frame the user could have paused on.
+   */
+  function exportGif() {
+    if (!S.frames.length) { toast('Nothing to export yet — run a program first.'); return; }
+    if (typeof GifEncoder === 'undefined') { toast('GIF encoder failed to load.'); return; }
+    var wasPlaying = S.playing;
+    setPlaying(false);
+
+    // Cap the width so a long run does not produce a giant file.
+    var maxW = 640;
+    var srcW = renderer.domElement.width, srcH = renderer.domElement.height;
+    var scale = Math.min(1, maxW / srcW);
+    var gw = Math.max(2, Math.round(srcW * scale));
+    var gh = Math.max(2, Math.round(srcH * scale));
+
+    var tmp = document.createElement('canvas');
+    tmp.width = gw; tmp.height = gh;
+    var tctx = tmp.getContext('2d');
+
+    var holdMs = Math.max(60, S.hold || 500);
+    var enc = new GifEncoder(gw, gh, { delayMs: holdMs, loop: true });
+
+    $('exportMsg').textContent = 'Rendering frames…';
+    $('exportMsg').classList.add('on');
+
+    var i = 0;
+    var savedIndex = S.index;
+    function grabNext() {
+      if (i >= S.frames.length) { finishGif(enc, savedIndex, wasPlaying); return; }
+      show(i, false);          // lay out and render frame i
+      applyCamera(0);
+      renderer.render(scene, camera);
+      // Downscale the live GL canvas into the temp 2D canvas, then read it.
+      tctx.drawImage(renderer.domElement, 0, 0, srcW, srcH, 0, 0, gw, gh);
+      var data = tctx.getImageData(0, 0, gw, gh).data;
+      enc.addFrame(data);
+      i++;
+      $('exportMsg').textContent = 'Rendering frames… ' + i + ' / ' + S.frames.length;
+      // Yield so the UI can paint the progress line.
+      setTimeout(grabNext, 0);
+    }
+    setTimeout(grabNext, 30);
+  }
+
+  function finishGif(enc, restoreIndex, wasPlaying) {
+    $('exportMsg').textContent = 'Encoding GIF…';
+    setTimeout(function () {
+      var bytes = enc.finish();
+      // base64 the bytes for the extension to write to disk.
+      var CHUNK = 0x8000, str = '';
+      for (var p = 0; p < bytes.length; p += CHUNK) {
+        str += String.fromCharCode.apply(null, bytes.subarray(p, p + CHUNK));
+      }
+      send({ type: 'gif', b64: btoa(str), frames: enc.frames.length, source: S.file });
+      $('exportMsg').textContent = 'Saved ' + enc.frames.length + '-frame GIF';
+      setTimeout(function () { $('exportMsg').classList.remove('on'); }, 2600);
+      if (restoreIndex >= 0) show(restoreIndex, false);
+      if (wasPlaying) setPlaying(true);
+    }, 20);
+  }
+
+  function toast(msg) {
+    $('invalidMsg').textContent = msg;
+    $('invalid').classList.add('on');
+    setTimeout(function () { $('invalid').classList.remove('on'); }, 3200);
+  }
 
   function applyRunConfig(c) {
     if (!c) return;

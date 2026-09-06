@@ -2,8 +2,8 @@
   "name": "vyuha",
   "displayName": "VYUHA",
   "description": "Run your code in any language and watch it draw itself in 3D \u2014 every program, even one that prints only hello world.",
-  "version": "2.1.0",
-  "publisher": "KANAK PRABHAKAR",
+  "version": "3.1.0",
+  "publisher": "KANAKPRABHAKAR",
   "license": "MIT",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -194,6 +194,33 @@
         "command": "vyuha.gotoFrame",
         "title": "Go to Frame",
         "category": "VYUHA"
+      },
+      {
+        "command": "vyuha.visualizeCompilation",
+        "title": "VYUHA: Visualize Compilation (real toolchain)",
+        "icon": "$(circuit-board)"
+      },
+      {
+        "command": "vyuha.runSelection",
+        "title": "VYUHA: Run Selected Code"
+      },
+      {
+        "command": "vyuha.runByLanguage",
+        "title": "VYUHA: Run By Language\u2026"
+      },
+      {
+        "command": "vyuha.openCompileArtifact",
+        "title": "VYUHA: Open Compiler Stage Artifact\u2026"
+      },
+      {
+        "command": "vyuha.exportGif",
+        "title": "VYUHA: Export Run as GIF",
+        "icon": "$(device-camera)"
+      },
+      {
+        "command": "vyuha.debugVisualize",
+        "title": "VYUHA: Debug Visualize (no print statements)",
+        "icon": "$(debug-alt)"
       }
     ],
     "keybindings": [
@@ -207,6 +234,29 @@
         "command": "vyuha.stopRun",
         "key": "ctrl+alt+x",
         "mac": "cmd+alt+x"
+      },
+      {
+        "command": "vyuha.runAndVisualize",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "vyuha.stopRun",
+        "key": "ctrl+alt+m",
+        "mac": "cmd+alt+m"
+      },
+      {
+        "command": "vyuha.visualizeCompilation",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "vyuha.debugVisualize",
+        "key": "ctrl+alt+d",
+        "mac": "cmd+alt+d",
+        "when": "editorTextFocus"
       }
     ],
     "viewsContainers": {
@@ -239,6 +289,14 @@
         {
           "command": "vyuha.runAndVisualize",
           "group": "navigation@1"
+        },
+        {
+          "command": "vyuha.visualizeCompilation",
+          "group": "navigation@2"
+        },
+        {
+          "command": "vyuha.debugVisualize",
+          "group": "navigation@3"
         }
       ],
       "editor/title": [
@@ -252,12 +310,29 @@
         {
           "command": "vyuha.runAndVisualize",
           "group": "vyuha@1"
+        },
+        {
+          "command": "vyuha.visualizeCompilation",
+          "group": "vyuha@2"
+        },
+        {
+          "command": "vyuha.runSelection",
+          "when": "editorHasSelection",
+          "group": "vyuha@3"
+        },
+        {
+          "command": "vyuha.debugVisualize",
+          "group": "vyuha@4"
         }
       ],
       "explorer/context": [
         {
           "command": "vyuha.runAndVisualize",
           "group": "vyuha@1"
+        },
+        {
+          "command": "vyuha.visualizeCompilation",
+          "group": "vyuha@2"
         }
       ],
       "view/title": [
@@ -458,7 +533,7 @@
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run vendor && npm run compile",
     "package": "vsce package",
-    "test": "node tests/render-smoke.js && node tests/ds-smoke.js && node tests/runner-test.js && node tests/auto-test.js",
+    "test": "node tests/render-smoke.js && node tests/ds-smoke.js && node tests/runner-test.js && node tests/auto-test.js && node tests/compiler-test.js",
     "verify": "npm run vendor && npm run compile && npm test"
   },
   "devDependencies": {

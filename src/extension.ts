@@ -10,6 +10,8 @@ import { LayerTree } from './tree';
 import { RunSession, commandFor, knownExtensions, stdinFileFor, planTerminalRun, LogTail } from './runner';
 import { Payload, VFrame, parseLine } from './protocol';
 import { analyzeSource, stagesFor, autoFrame, initialState, AutoState, CodeGraph, Stage } from './codegraph';
+import { visualizeCompilation, PipelineReport } from './compilerviz';
+import { debugVisualize } from './debugviz';
 
 let views: GraphView[] = [];
 let active: GraphView | undefined;
@@ -43,6 +45,12 @@ export function activate(context: vscode.ExtensionContext) {
 
     /* running any program */
     vscode.commands.registerCommand('vyuha.runAndVisualize', (target?: vscode.Uri) => runAndVisualize(target)),
+    vscode.commands.registerCommand('vyuha.visualizeCompilation', (target?: vscode.Uri) => visualizeCompilationCmd(target)),
+    vscode.commands.registerCommand('vyuha.exportGif', () => exportRunGif()),
+    vscode.commands.registerCommand('vyuha.debugVisualize', (target?: vscode.Uri) => debugVisualizeCmd(target)),
+    vscode.commands.registerCommand('vyuha.runSelection', () => runSelection()),
+    vscode.commands.registerCommand('vyuha.runByLanguage', () => runByLanguage()),
+    vscode.commands.registerCommand('vyuha.openCompileArtifact', () => openCompileArtifact()),
     vscode.commands.registerCommand('vyuha.rerun', () => {
       if (lastRunFile) void runAndVisualize(vscode.Uri.file(lastRunFile));
       else vscode.window.showInformationMessage('Nothing has been run yet.');
@@ -492,6 +500,9 @@ function onRunEvent(e: RunEvent) {
     case 'export':
       void saveTrace(e.payload, 'vyuha-frames.json');
       break;
+    case 'gif':
+      void saveGif(e.b64, e.frames, e.source);
+      break;
     case 'error':
       vscode.window.showErrorMessage('The VYUHA renderer stopped: ' + e.message);
       break;
@@ -701,6 +712,30 @@ async function saveTrace(payload: unknown, defaultName: string) {
   }
 }
 
+async function saveGif(b64: string, frames: number, source: string) {
+  if (!b64) { vscode.window.showWarningMessage('The GIF came back empty — nothing was saved.'); return; }
+  const base = source ? path.basename(source, path.extname(source)) : 'vyuha';
+  const target = await vscode.window.showSaveDialog({
+    filters: { 'Animated GIF': ['gif'] },
+    saveLabel: 'Save GIF',
+    defaultUri: vscode.Uri.file(base + '-vyuha.gif')
+  });
+  if (!target) return;
+  await vscode.workspace.fs.writeFile(target, Buffer.from(b64, 'base64'));
+  const pick = await vscode.window.showInformationMessage(
+    'Saved a ' + frames + '-frame GIF of the run.', 'Reveal in Explorer');
+  if (pick) void vscode.commands.executeCommand('revealFileInOS', target);
+}
+
+async function exportRunGif() {
+  if (!runView || !runView.isAlive) {
+    vscode.window.showInformationMessage('Run something first — then export it as a GIF.');
+    return;
+  }
+  runView.reveal(true);
+  runView.exportGif();
+}
+
 async function fetchLiveTrace() {
   const endpoint = vscode.workspace.getConfiguration('vyuha').get<string>('traceEndpoint', '').trim();
   if (!endpoint) {
@@ -759,4 +794,191 @@ function debounce<T>(fn: (arg: T) => void, ms: number): (arg: T) => void {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => fn(arg), ms);
   };
+}
+
+
+/* ── Compiler visualisation ──────────────────────────────────────
+ * The pipeline module does the real work; this wiring only decides which
+ * file, opens the native run view, and feeds every emitted frame straight
+ * into it — the same path program frames take, so the 3D renderer needs
+ * no changes at all.
+ */
+
+let lastPipeline: PipelineReport | undefined;
+
+async function visualizeCompilationCmd(target?: vscode.Uri) {
+  const editor = vscode.window.activeTextEditor;
+  const uri = target || (editor ? editor.document.uri : undefined);
+  if (!uri || uri.scheme !== 'file') {
+    vscode.window.showInformationMessage('Open a source file, then run the compiler visualizer on it.');
+    return;
+  }
+  const doc = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString());
+  if (doc && doc.isDirty) await doc.save();
+
+  stopEverything();
+  const cfg = readRunConfig();
+  const file = uri.fsPath;
+
+  ensureRunView();
+  const view = runView!;
+  view.setTitle('VYUHA · compiler · ' + path.basename(file));
+  view.beginRun(file, 'compiler pipeline');
+  view.reveal(true);
+
+  lastRunFile = file;
+  tree.setFrames([], file);
+  void vscode.commands.executeCommand('setContext', 'vyuha.hasFrames', false);
+  if (cfg.clearOutputOnRun) out.clear();
+  out.appendLine('· VYUHA compiler visualizer · ' + file + '\n');
+
+  status.text = '$(sync~spin) VYUHA · compiler pipeline';
+  status.show();
+
+  const frames: VFrame[] = [];
+  const report = await visualizeCompilation(
+    file,
+    commandFor(file, cfg.runners) || undefined,
+    cfg.runTimeout,
+    frame => {
+      frames.push(frame);
+      view.addFrame(frame, frames.length - 1);
+      if (frames.length === 1) void vscode.commands.executeCommand('setContext', 'vyuha.hasFrames', true);
+      tree.setFrames(frames, file);
+    },
+    line => out.appendLine(line)
+  );
+  lastPipeline = report;
+
+  out.appendLine('\n' + report.summary);
+  if (report.toolPath) out.appendLine('toolchain: ' + report.tool + '  (' + report.toolPath + ')');
+  status.text = (report.ok ? '$(check) ' : '$(error) ') + 'VYUHA · ' + report.tool.split(' · ')[0];
+  status.tooltip = report.summary;
+  if (report.artifacts.length) {
+    const pick = await vscode.window.showInformationMessage(
+      report.summary + ' Stage artifacts are ready.',
+      'Open artifact…'
+    );
+    if (pick) await openCompileArtifact();
+  }
+}
+
+/* ── Debugger-driven visualisation ───────────────────────────────
+ * Runs the program under a real debugger (Python sys.settrace, or gdb for
+ * C/C++) and streams the call stack and locals as frames — the program needs
+ * no @vyuha prints at all. Same native 3D renderer, same frame pipeline.
+ */
+async function debugVisualizeCmd(target?: vscode.Uri) {
+  const editor = vscode.window.activeTextEditor;
+  const uri = target || (editor ? editor.document.uri : undefined);
+  if (!uri || uri.scheme !== 'file') {
+    vscode.window.showInformationMessage('Open a Python or C/C++ file, then run the debugger visualizer.');
+    return;
+  }
+  const doc = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString());
+  if (doc && doc.isDirty) await doc.save();
+
+  stopEverything();
+  const cfg = readRunConfig();
+  const file = uri.fsPath;
+
+  ensureRunView();
+  const view = runView!;
+  view.setTitle('VYUHA · debug · ' + path.basename(file));
+  view.beginRun(file, 'debugger — no instrumentation');
+  view.reveal(true);
+
+  lastRunFile = file;
+  tree.setFrames([], file);
+  void vscode.commands.executeCommand('setContext', 'vyuha.hasFrames', false);
+  if (cfg.clearOutputOnRun) out.clear();
+  out.appendLine('· VYUHA debugger · ' + file + '\n');
+
+  status.text = '$(debug-alt) VYUHA · debugging';
+  status.show();
+
+  const frames: VFrame[] = [];
+  const report = await debugVisualize(
+    file,
+    cfg.runTimeout,
+    frame => {
+      frames.push(frame);
+      view.addFrame(frame, frames.length - 1);
+      if (frames.length === 1) void vscode.commands.executeCommand('setContext', 'vyuha.hasFrames', true);
+      tree.setFrames(frames, file);
+    },
+    line => out.append(line)
+  );
+
+  view.endRun(report.exitCode, 0, cfg.autoPlay);
+  out.appendLine('\n' + report.summary);
+  status.text = (report.ok ? '$(check) ' : '$(error) ') + 'VYUHA · ' + report.tool;
+  status.tooltip = report.summary;
+  if (!report.ok) {
+    vscode.window.showWarningMessage(report.summary);
+  }
+}
+
+async function openCompileArtifact() {
+  if (!lastPipeline || !lastPipeline.artifacts.length) {
+    vscode.window.showInformationMessage('Run "VYUHA: Visualize Compilation" first — its stage artifacts appear here.');
+    return;
+  }
+  const pick = await vscode.window.showQuickPick(
+    lastPipeline.artifacts.map(a => ({ label: a.label, description: a.file })),
+    { placeHolder: 'Open a real artifact from the last pipeline (' + lastPipeline.tool + ')' }
+  );
+  if (!pick) return;
+  const f = pick.description!;
+  const looksBinary = /\.(o|obj|class|exe)$/.test(f) || !/\./.test(path.basename(f));
+  if (looksBinary) {
+    vscode.window.showInformationMessage(path.basename(f) + ' is a binary artifact (' + f + ') — its size and symbols are on the stage node.');
+    return;
+  }
+  const docu = await vscode.workspace.openTextDocument(vscode.Uri.file(f));
+  await vscode.window.showTextDocument(docu, { preview: true });
+}
+
+/* ── Code Runner conveniences ─────────────────────────────────── */
+
+async function runSelection() {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || editor.selection.isEmpty) {
+    vscode.window.showInformationMessage('Select some code first, then run the selection.');
+    return;
+  }
+  const text = editor.document.getText(editor.selection);
+  const ext = path.extname(editor.document.fileName) || guessExt(editor.document.languageId);
+  const tmp = path.join(require('os').tmpdir(), 'vyuha-selection-' + Date.now() + ext);
+  await fs.promises.writeFile(tmp, text, 'utf8');
+  await runAndVisualize(vscode.Uri.file(tmp));
+}
+
+function guessExt(languageId: string): string {
+  const map: Record<string, string> = {
+    python: '.py', javascript: '.js', typescript: '.ts', java: '.java',
+    c: '.c', cpp: '.cpp', go: '.go', rust: '.rs', ruby: '.rb', php: '.php',
+    shellscript: '.sh', r: '.r', julia: '.jl', lua: '.lua', perl: '.pl'
+  };
+  return map[languageId] || '.txt';
+}
+
+async function runByLanguage() {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) { vscode.window.showInformationMessage('Open a file first.'); return; }
+  const cfg = readRunConfig();
+  const exts = knownExtensions(cfg.runners);
+  const pick = await vscode.window.showQuickPick(exts.map(e => ({ label: '.' + e })), {
+    placeHolder: 'Run the current file as which language?'
+  });
+  if (!pick) return;
+  const chosen = pick.label.slice(1);
+  const file = editor.document.uri.fsPath;
+  if (path.extname(file).replace(/^\./, '') === chosen) {
+    await runAndVisualize(editor.document.uri);
+    return;
+  }
+  const tmp = path.join(require('os').tmpdir(), 'vyuha-as-' + Date.now() + '.' + chosen);
+  await fs.promises.writeFile(tmp, editor.document.getText(), 'utf8');
+  await runAndVisualize(vscode.Uri.file(tmp));
 }

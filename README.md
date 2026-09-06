@@ -194,3 +194,14 @@ VYUHA sends nothing anywhere. Your program runs on your machine, its output is p
 ## Licence
 
 MIT © 2026 Kanak Prabhakar
+
+## Compiler Visualizer (v3.0)
+
+VYUHA now shows you the **real toolchain on your machine**. Press `Ctrl+Alt+C` on a
+C, C++, Java, Python, JavaScript, TypeScript or Go file and VYUHA finds whichever
+compiler or interpreter you actually have installed (g++, clang, javac, python3,
+node, go…), prints its version, and animates its genuine stages in 3D — with the
+measured facts on every node: how many lines the preprocessor produced, how many
+assembly instructions the compiler emitted, which of your functions got the most,
+how big the object file and binary are, and how long each stage took. The `.i`
+and `.s` artifacts it opens are the compiler's real output, not a simulation.

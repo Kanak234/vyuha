@@ -58,6 +58,8 @@ export interface VFrame {
   edges: VEdge[];
   /** Source line the emitting statement sat on, when the program reports it. */
   line?: number;
+  /** Layout hint: 'recursion' lays the tree top-down by call depth. */
+  layout?: string;
 }
 
 export type Payload =
@@ -111,7 +113,8 @@ export function normalise(raw: unknown): Payload {
   const meta = {
     title: str(o.title ?? o.name),
     note: str(o.note ?? o.message ?? o.step),
-    line: num(o.line)
+    line: num(o.line),
+    layout: str(o.layout)
   };
 
   if (Array.isArray(o.array) || Array.isArray(o.values)) {
@@ -140,7 +143,7 @@ export function normalise(raw: unknown): Payload {
 
 /* ── builders ───────────────────────────────────────────────── */
 
-interface Meta { title?: string; note?: string; line?: number }
+interface Meta { title?: string; note?: string; line?: number; layout?: string }
 
 function fromArray(values: any[], o: Record<string, any>, meta: Meta = {}): VFrame {
   const active = idSet(o.active ?? o.highlight);
@@ -296,6 +299,7 @@ function frame(kind: DsKind, nodes: VNode[], edges: VEdge[], meta: Meta): VFrame
   if (meta.title) out.title = meta.title;
   if (meta.note) out.note = meta.note;
   if (meta.line !== undefined) out.line = meta.line;
+  if (meta.layout) out.layout = meta.layout;
   return out;
 }
 
