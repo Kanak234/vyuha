@@ -222,8 +222,20 @@ export class RunSession {
 /** The command that would run this file, or null when the extension is unknown. */
 export function commandFor(file: string, overrides: Record<string, string>): string | null {
   const ext = path.extname(file).replace(/^\./, '').toLowerCase();
-  const template = (overrides && overrides[ext]) || RUNNERS[ext];
+  if (overrides && overrides[ext]) {
+    return expand(overrides[ext], file);
+  }
+  const template = RUNNERS[ext];
   if (!template) return null;
+
+  if (ext === 'go') {
+    const dir = path.dirname(file);
+    const helper = path.join(dir, 'vyuha.go');
+    if (fs.existsSync(helper) && path.resolve(file) !== path.resolve(helper)) {
+      return `go run "${file}" "${helper}"`;
+    }
+  }
+
   return expand(template, file);
 }
 

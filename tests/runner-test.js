@@ -101,8 +101,11 @@ ok('${bin} lands in a temp folder', exp.split(' ').pop().startsWith(os.tmpdir())
 console.log('\n— running real programs —');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vyuha-test-'));
-for (const f of ['vyuha.py', 'vyuha.js', 'vyuha.hpp', 'vyuha.h']) {
-  fs.copyFileSync(path.join(__dirname, '..', 'lib', f), path.join(tmp, f));
+for (const f of ['vyuha.py', 'vyuha.js', 'vyuha.hpp', 'vyuha.h', 'vyuha.go', 'Vyuha.java']) {
+  const srcFile = path.join(__dirname, '..', 'lib', f);
+  if (fs.existsSync(srcFile)) {
+    fs.copyFileSync(srcFile, path.join(tmp, f));
+  }
 }
 
 function have(bin) {
