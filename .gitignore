@@ -12,6 +12,9 @@ venv/
 .venv/
 dist/
 build/
+out/
+media/three.min.js
+*.vsix
 *.gguf
 *.pt
 *.safetensors
