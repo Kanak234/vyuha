@@ -328,7 +328,7 @@ function driveGdb(gdb: string, bin: string, file: string, isCpp: boolean, work: 
     'run',
     // python-in-gdb loop: step through, emitting one JSON line per stop.
     'python',
-    'import gdb, json',
+    'import gdb, json, os',
     'MAX = 2000',
     'count = 0',
     'def locals_here():',
@@ -353,14 +353,22 @@ function driveGdb(gdb: string, bin: string, file: string, isCpp: boolean, work: 
     '    except Exception:',
     '        pass',
     '    return out',
+    // Only report stops inside the user's own file. `step` descends into
+    // libc, and a trace of glibc internals is thousands of frames of noise
+    // that buries the program being studied.
+    'USERFILE = ' + JSON.stringify(path.basename(file)),
     'def emit_stop():',
     '    global count',
     '    try:',
     '        frame = gdb.selected_frame()',
-    '        line = frame.find_sal().line',
+    '        sal = frame.find_sal()',
+    '        line = sal.line',
     '        func = frame.name() or "?"',
+    '        fname = sal.symtab.filename if sal and sal.symtab else ""',
     '    except Exception:',
     '        return False',
+    '    if os.path.basename(fname) != USERFILE:',
+    '        return True',
     '    stack = []',
     '    f = gdb.newest_frame()',
     '    chain = []',
@@ -377,7 +385,7 @@ function driveGdb(gdb: string, bin: string, file: string, isCpp: boolean, work: 
     '            pass',
     '    chain[-1].select()',
     '    msg = {"__vyuha_dbg":"step","event":"line","line":line,"func":func,"stack":stack}',
-    '    gdb.write("##VYUHADBG##" + json.dumps(msg) + "\n", gdb.STDERR)',
+    '    gdb.write("##VYUHADBG##" + json.dumps(msg) + "\\n", gdb.STDERR)',
     '    gdb.flush()',
     '    return True',
     'while count < MAX:',
@@ -391,7 +399,7 @@ function driveGdb(gdb: string, bin: string, file: string, isCpp: boolean, work: 
     '        gdb.selected_frame()',
     '    except gdb.error:',
     '        break',
-    'gdb.write("##VYUHADBG##" + json.dumps({"__vyuha_dbg":"done","steps":count}) + "\n", gdb.STDERR)',
+    'gdb.write("##VYUHADBG##" + json.dumps({"__vyuha_dbg":"done","steps":count}) + "\\n", gdb.STDERR)',
     'gdb.flush()',
     'end',
     'quit'
@@ -429,10 +437,17 @@ function driveGdb(gdb: string, bin: string, file: string, isCpp: boolean, work: 
     done = true;
     clearTimeout(timer);
     try { fs.rmSync(work, { recursive: true, force: true }); } catch { /* */ }
+    // frames === 0 means the gdb python block never emitted anything -- the
+    // trace did not happen. Reporting ok:true there is worse than failing:
+    // the view shows nothing and nothing says why.
     resolve({
-      ok: true, language: isCpp ? 'C++' : 'C', tool: 'gdb + ' + (isCpp ? 'g++' : 'gcc'),
+      ok: frames > 0, language: isCpp ? 'C++' : 'C',
+      tool: 'gdb + ' + (isCpp ? 'g++' : 'gcc'),
       frames, exitCode: code,
-      summary: frames + ' debugger steps traced with gdb — no print instrumentation needed.'
+      summary: frames > 0
+        ? frames + ' debugger steps traced with gdb — no print instrumentation needed.'
+        : 'gdb produced no steps (exit ' + code + '). Check that gdb has Python support: '
+          + 'gdb --batch -ex "python print(1)"'
     });
   });
   child.on('error', err => {
