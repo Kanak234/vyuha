@@ -14,3 +14,9 @@ package-lock.json
 install.sh
 install.ps1
 START-HERE.md
+
+# A whole copy of the 2.0.0 extension sits in the repository. It was shipping
+# inside the 3.x package -- an old build of the same extension nested in the
+# new one. It stays in git; it must not go in the vsix.
+vyuha-2.0.0/**
+CHANGELOG-3.1.0.md
