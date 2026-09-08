@@ -1,5 +1,31 @@
 # Changelog
 
+## 3.1.1
+
+### Fixed
+
+- **Debug Visualize traced nothing for C and C++.** The gdb command file is
+  built from a TypeScript string array, and two lines ended with `"\n"` — a
+  single backslash, which TypeScript turns into a real newline. That split the
+  Python statement across two lines with an unterminated string, so the whole
+  `python … end` block failed to parse and no trace markers were ever emitted.
+  The parser then found nothing and the view stayed empty. C went from 0 frames
+  to 645. The Python tracer used `\\n` and was never affected.
+
+- **The trace descended into libc.** Those 645 frames were mostly glibc
+  internals — line numbers in the thousands for a three-line program. Stops are
+  now reported only for the file being traced, matched on the full basename.
+  645 frames became 4, all of them in the user's own code.
+
+- **A failed trace reported success.** Zero frames with a non-zero exit code
+  still resolved `ok: true`, leaving the view empty with nothing to explain
+  why. It now reports failure and points at
+  `gdb --batch -ex "python print(1)"` to check gdb's Python support.
+
+Verified with gdb 17.1: C traces 4 frames on the two executable lines of a
+three-line file; Python is unchanged at 96 frames.
+
+
 ## [3.1.0] - 2026-09-02
 
 ### Added — Debugger-driven visualization (no print statements)
