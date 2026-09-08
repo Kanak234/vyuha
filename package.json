@@ -1,7 +1,7 @@
 {
   "name": "vyuha",
   "displayName": "VYUHA",
-  "description": "Run your code in any language and watch it draw itself in 3D \u2014 every program, even one that prints only hello world.",
+  "description": "Run your code in any language and watch it draw itself in 3D — every program, even one that prints only hello world.",
   "version": "3.1.0",
   "publisher": "KANAKPRABHAKAR",
   "license": "MIT",
@@ -206,11 +206,11 @@
       },
       {
         "command": "vyuha.runByLanguage",
-        "title": "VYUHA: Run By Language\u2026"
+        "title": "VYUHA: Run By Language…"
       },
       {
         "command": "vyuha.openCompileArtifact",
-        "title": "VYUHA: Open Compiler Stage Artifact\u2026"
+        "title": "VYUHA: Open Compiler Stage Artifact…"
       },
       {
         "command": "vyuha.exportGif",
@@ -534,7 +534,8 @@
     "vscode:prepublish": "npm run vendor && npm run compile",
     "package": "vsce package",
     "test": "node tests/render-smoke.js && node tests/ds-smoke.js && node tests/runner-test.js && node tests/auto-test.js && node tests/compiler-test.js",
-    "verify": "npm run vendor && npm run compile && npm test"
+    "verify": "npm run vendor && npm run compile && npm test",
+    "build": "npm run compile"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
