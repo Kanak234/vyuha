@@ -101,6 +101,7 @@ export function buildHtml(webview: vscode.Webview, extUri: vscode.Uri, mode: 'ne
     <button class="btn on" id="bBloom">Glow</button>
     <button class="btn on" id="bOrbit">Auto-orbit</button>
     <button class="btn" id="bReset">Reset view</button>
+    <button class="btn" id="bGif" title="Record ~3 seconds of the animation as a GIF">Export GIF</button>
   </div>
 
   <div class="panel enter" id="timeline" role="toolbar" aria-label="Frame timeline">

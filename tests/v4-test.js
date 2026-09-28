@@ -330,6 +330,80 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vyuha-v4-'));
     ok('watermark sits in the bottom-right corner', st.length === 5 && st[1] > 0 && st[2] > 0);
   }
 
+  /* ══ A3 · 4.1.0 network GIF export ═══════════════════════════════ */
+  console.log('— network gif (4.1.0) —');
+  {
+    const fakeLogo = { complete: true, naturalWidth: 64 };
+    window.__vyuhaView.logoImage = () => fakeLogo;
+    send({ type: 'spec', spec, config: {} });
+    step(5);
+    ok('network view has an Export GIF button', !!$('bGif'));
+    drawCalls.length = 0; posted.length = 0;
+    $('bGif').click();
+    step(260);                                   // ~4.3 s of 60 fps frames; recorder keeps one per 80 ms
+    for (let i = 0; i < 40 && !posted.some(m => m.type === 'gif'); i++) await new Promise(r => setTimeout(r, 25));
+    const g = posted.find(m => m.type === 'gif');
+    ok('network GIF is recorded and posted', !!g && g.b64.length > 0, g ? g.frames + ' frames' : 'none');
+    ok('network GIF has 40 frames (3.2 s at 12.5 fps)', g && g.frames === 40);
+    ok('every network GIF frame carries the KP watermark', drawCalls.filter(a => a[0] === fakeLogo).length === 40);
+    ok('recording stops after the GIF (no extra frames)', (() => { const n = drawCalls.length; step(30); return drawCalls.length === n; })());
+  }
+
+  /* ══ F · 4.1.0 runner: Java with the helper beside it ═════════════ */
+  console.log('— java runner (4.1.0) —');
+  {
+    const { commandFor, javaMainClass } = require(__dirname + '/../out/runner.js');
+    const jd = path.join(tmp, 'jrun');
+    fs.mkdirSync(jd);
+    fs.copyFileSync(path.join(__dirname, '..', 'examples', 'BinarySearch.java'), path.join(jd, 'BinarySearch.java'));
+    const plain = commandFor(path.join(jd, 'BinarySearch.java'), {});
+    ok('without the helper the 3.x single-file command is kept', /^java "/.test(plain), plain);
+    fs.copyFileSync(path.join(__dirname, '..', 'lib', 'Vyuha.java'), path.join(jd, 'Vyuha.java'));
+    const cmd = commandFor(path.join(jd, 'BinarySearch.java'), {});
+    ok('with Vyuha.java beside it, both files are compiled', /^javac -d .* "[^"]*Vyuha\.java" && java -cp /.test(cmd), cmd);
+    const pk = path.join(jd, 'Pk.java');
+    fs.writeFileSync(pk, '/* header */\n// note\npackage algo.sort;\npublic class Pk {}');
+    ok('package name is used for the main class', javaMainClass(pk) === 'algo.sort.Pk', javaMainClass(pk));
+    if (spawnSync('javac', ['-version']).status === 0) {
+      const r = spawnSync(cmd, { shell: true, encoding: 'utf8' });
+      const p = r.stdout.split('\n').filter(l => l.startsWith('@vyuha ')).map(l => JSON.parse(l.slice(7)));
+      ok('bundled BinarySearch.java now runs with the helper', r.status === 0 && p.length > 0, r.stderr.slice(0, 200));
+      ok('its frames carry the caller line (12 = first Vyuha.array call)', p[0] && p[0].line === 12);
+    } else skip('java run with helper', 'javac not installed');
+  }
+
+  /* ══ G · 4.1.0 helpers: C, C++, Go ═══════════════════════════════ */
+  console.log('— c / c++ / go helpers (4.1.0) —');
+  {
+    const lib = path.join(__dirname, '..', 'lib');
+    const cd = path.join(tmp, 'native'); fs.mkdirSync(cd);
+    ['vyuha.h', 'vyuha.hpp', 'vyuha.go'].forEach(f => fs.copyFileSync(path.join(lib, f), path.join(cd, f)));
+    const frames = out => out.split('\n').filter(l => l.startsWith('@vyuha ')).map(l => JSON.parse(l.slice(7)));
+    if (spawnSync('gcc', ['--version']).status === 0) {
+      fs.writeFileSync(path.join(cd, 't.c'), ['#include "vyuha.h"', 'int main(void) {', '    int a[3] = {3, 1, 2};',
+        '    vyuha_array(a, 3, 0, 0, "t", 0);', '    vyuha_stack(a, 2, 0, 0);', '    (vyuha_queue)(a, 1, 0, 0);', '    return 0;', '}'].join('\n'));
+      const c = spawnSync('sh', ['-c', 'gcc -std=c99 -Wall -Werror -o t t.c && ./t'], { cwd: cd, encoding: 'utf8' });
+      const p = frames(c.stdout);
+      ok('C: compiles warning-free and stamps __LINE__', c.status === 0 && p[0] && p[0].line === 4 && p[1].line === 5, c.stderr.slice(0, 300));
+      ok('C: a call that bypasses the macro sends no stale line', p[2] && p[2].line === undefined);
+    } else skip('C helper', 'gcc not installed');
+    if (spawnSync('g++', ['--version']).status === 0) {
+      fs.writeFileSync(path.join(cd, 't.cpp'), ['#include "vyuha.hpp"', '#include <array>', 'int main() {',
+        '    std::vector<int> a{3, 1, 2};', '    vyuha::array(a, {0});', '    vyuha::stack(a);',
+        '    vyuha::array(a, {}, "", "", {}, 77);', '    std::array<int, 1> keep{}; (void)keep;', '}'].join('\n'));
+      const c = spawnSync('sh', ['-c', 'g++ -std=c++11 -Wall -Werror -o tp t.cpp && ./tp'], { cwd: cd, encoding: 'utf8' });
+      const p = frames(c.stdout);
+      ok('C++: default-argument line is the caller\'s', c.status === 0 && p[0] && p[0].line === 5 && p[1].line === 6, c.stderr.slice(0, 300));
+      ok('C++: an explicit line wins', p[2] && p[2].line === 77);
+    } else skip('C++ helper', 'g++ not installed');
+    if (spawnSync('go', ['version']).status === 0) {
+      fs.writeFileSync(path.join(cd, 'main.go'), 'package main\n\nfunc main() {\n\tVyuhaArray([]int{3, 1}, nil, "t", "")\n\tVyuhaStack([]int{1}, "s", "")\n}\n');
+      const g = spawnSync('go', ['run', 'main.go', 'vyuha.go'], { cwd: cd, encoding: 'utf8', env: Object.assign({}, process.env, { GOCACHE: path.join(tmp, 'gocache'), GOFLAGS: '-mod=mod' }) });
+      const p = frames(g.stdout);
+      ok('Go: runtime.Caller finds the line in main.go', p[0] && p[0].line === 4 && p[1] && p[1].line === 5, g.stderr.slice(0, 300));
+    } else skip('Go helper', 'go not installed');
+  }
+
   /* ══ E · helpers, run for real ═══════════════════════════════════ */
   console.log('— helpers —');
   const lib = path.join(__dirname, '..', 'lib');

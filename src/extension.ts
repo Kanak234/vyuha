@@ -639,6 +639,10 @@ function onEvent(e: ViewEvent) {
       void revealLayer(e.view, e.layer, true);
       break;
     }
+    case 'gif':
+      // 4.1.0: GIF recorded in a spec's network view; name it after the spec file.
+      void saveGif(e.b64, e.frames, e.view.uri.fsPath);
+      break;
     case 'decision': {
       status.text = '$(circuit-board) ' + e.action + '  ' + (e.confidence * 100).toFixed(0) + '%';
       status.tooltip = 'Trace the path that produced this decision';
@@ -733,7 +737,8 @@ async function saveTrace(payload: unknown, defaultName: string) {
 
 async function saveGif(b64: string, frames: number, source: string) {
   if (!b64) { vscode.window.showWarningMessage('The GIF came back empty — nothing was saved.'); return; }
-  const base = source ? path.basename(source, path.extname(source)) : 'vyuha';
+  // ".vyuha.json" specs: strip both parts so "policy-net.vyuha.json" -> "policy-net".
+  const base = source ? path.basename(source).replace(/(\.vyuha)?\.[^.]+$/, '') : 'vyuha';
   const target = await vscode.window.showSaveDialog({
     filters: { 'Animated GIF': ['gif'] },
     saveLabel: 'Save GIF',
@@ -742,7 +747,7 @@ async function saveGif(b64: string, frames: number, source: string) {
   if (!target) return;
   await vscode.workspace.fs.writeFile(target, Buffer.from(b64, 'base64'));
   const pick = await vscode.window.showInformationMessage(
-    'Saved a ' + frames + '-frame GIF of the run.', 'Reveal in Explorer');
+    'Saved a ' + frames + '-frame GIF.', 'Reveal in Explorer');
   if (pick) void vscode.commands.executeCommand('revealFileInOS', target);
 }
 

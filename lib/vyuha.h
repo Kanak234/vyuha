@@ -18,8 +18,28 @@
 #include <stdio.h>
 #include <string.h>
 
+/*
+ * VYUHA 4.1.0 -- source line of the call, for "double-tap a node to open its line".
+ * WHY: C has no stack traces, so the line is captured at compile time with
+ *      __LINE__ by the macros at the bottom of this header.
+ * HOW: each macro sets vyuha__line, then calls the real function; vyuha_close()
+ *      writes it into the JSON and resets it to 0, so a call made without the
+ *      macro (e.g. through a function pointer) never reuses an old line.
+ * NOTE: the line belongs to the file that made the call. If you call the helper
+ *      from a second .c file, VYUHA will open that line number in the run file.
+ */
+static int vyuha__line = 0;
+
 static inline void vyuha_begin(void) { printf("@vyuha "); }
 static inline void vyuha_end(void)   { printf("\n"); fflush(stdout); }
+
+/* Closes the JSON object: adds "line" when a macro captured one. */
+static inline void vyuha_close(void) {
+    if (vyuha__line > 0) printf(",\"line\":%d", vyuha__line);
+    vyuha__line = 0;
+    putchar('}');
+    vyuha_end();
+}
 
 static inline void vyuha_str(const char *s) {
     putchar('"');
@@ -56,8 +76,7 @@ static inline void vyuha_array(const int *values, int n,
     putchar(']');
     vyuha_meta(title, note);
     vyuha_idx("active", active, na);
-    putchar('}');
-    vyuha_end();
+    vyuha_close();
 }
 
 /* ── stack / queue / linked list ─────────────────────────────── */
@@ -71,8 +90,7 @@ static inline void vyuha_sequence(const char *kind, const int *values, int n,
     putchar(']');
     vyuha_meta(title, note);
     vyuha_idx("active", active, na);
-    putchar('}');
-    vyuha_end();
+    vyuha_close();
 }
 
 static inline void vyuha_list(const int *v, int n, const int *active, int na,
@@ -100,8 +118,7 @@ static inline void vyuha_matrix(const int *cells, int rows, int cols,
     }
     putchar(']');
     vyuha_meta(title, note);
-    putchar('}');
-    vyuha_end();
+    vyuha_close();
 }
 
 /*
@@ -127,8 +144,23 @@ static inline void vyuha_graph(int node_count, const int *edges, int edge_count,
     putchar(']');
     vyuha_meta(title, note);
     vyuha_idx("active", active, na);
-    putchar('}');
-    vyuha_end();
+    vyuha_close();
 }
+
+/*
+ * VYUHA 4.1.0 -- call-site macros. Defined AFTER the functions on purpose: a
+ * macro named like a function would otherwise rewrite the function definitions
+ * above. Inside the macro body the name refers to the real function (the C
+ * preprocessor never expands a macro inside its own expansion), so user code
+ * keeps calling vyuha_array(...) exactly as before -- now with its line.
+ * The comma expression works in C99 and C++ and costs nothing at run time.
+ */
+#define vyuha_array(...)    (vyuha__line = __LINE__, vyuha_array(__VA_ARGS__))
+#define vyuha_sequence(...) (vyuha__line = __LINE__, vyuha_sequence(__VA_ARGS__))
+#define vyuha_list(...)     (vyuha__line = __LINE__, vyuha_list(__VA_ARGS__))
+#define vyuha_stack(...)    (vyuha__line = __LINE__, vyuha_stack(__VA_ARGS__))
+#define vyuha_queue(...)    (vyuha__line = __LINE__, vyuha_queue(__VA_ARGS__))
+#define vyuha_matrix(...)   (vyuha__line = __LINE__, vyuha_matrix(__VA_ARGS__))
+#define vyuha_graph(...)    (vyuha__line = __LINE__, vyuha_graph(__VA_ARGS__))
 
 #endif /* VYUHA_H */

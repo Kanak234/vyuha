@@ -1,5 +1,39 @@
 # Changelog
 
+## 4.1.0 — 2026-09-28
+
+### Fixed
+- **Java programs using the `Vyuha.java` helper did not compile.** Java's
+  single-file launcher (`java File.java`) compiles only that file, so every call
+  to `Vyuha.*` failed with "cannot find symbol" — the bundled `BinarySearch.java`
+  example included. When `Vyuha.java` is beside the program, VYUHA now runs
+  `javac -d <temp> File.java Vyuha.java && java -cp <temp> <Class>` (package
+  declarations respected). Without the helper the old command is unchanged.
+  Requires a JDK (`javac`).
+
+### Added
+- **C / C++ / Go helpers stamp the caller's source line**, so double-tap opens the
+  right line in those languages too. C: `__LINE__` via call-site macros (calls that
+  bypass the macro send no line, never a stale one). C++: `int line = __builtin_LINE()`
+  default argument on every function (GCC, Clang, MSVC 19.26+; explicit value wins).
+  Go: `runtime.Caller`, skipping frames inside `vyuha.go`. Source-compatible: no
+  existing call needs to change.
+- **Export GIF in the network view** (toolbar button). Records 40 frames at
+  12.5 fps (~3.2 s) of the live animation, max 640 px wide, KP watermark on
+  every frame; saved via the same dialog as run GIFs. Works for `.vyuha.json`
+  specs and for networks printed by a program.
+
+### Not in this release
+- Debug Visualize for Java and JavaScript (needs `jdb` / the Node inspector).
+- A helper called from a second C/C++ file reports that file's line number,
+  which VYUHA opens in the run file.
+
+### Verified
+- `npm run verify`: all suites pass. New checks run the real toolchains: javac +
+  java (bundled example), gcc `-Wall -Werror`, g++ `-Wall -Werror`, go run; and
+  record a real 40-frame network GIF in the jsdom webview.
+
+
 ## 4.0.0 — 2026-09-28
 
 Driven by tester feedback: "no bugs found, but give me a size control, and

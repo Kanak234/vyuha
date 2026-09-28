@@ -1155,6 +1155,68 @@
     }
   }
 
+  /* ── 4.1.0: network GIF export ─────────────────────────────
+     WHY: the data-structure view could export a GIF, the network view (the
+     most striking picture VYUHA makes) could not -- users screen-recorded it.
+     WHAT: records ~3.2 s of the live animation at 12.5 fps, max 640 px wide,
+     KP watermark bottom-right, then posts {type:'gif'} to the extension
+     (runview.ts / panel.ts -> extension.ts saveGif -> save dialog).
+     HOW: loop() calls recordGifFrame() after each render; it keeps one frame
+     every 80 ms until it has GIF_FRAMES, then encodes with media/gifenc.js. */
+  const GIF_FRAMES = 40, GIF_STEP_MS = 80, GIF_MAX_W = 640;
+  let gifRec = null;          // { enc, tctx, gw, gh, next, count } while recording
+
+  function exportNetGif() {
+    if (gifRec) return;                                         // already recording
+    if (typeof GifEncoder === 'undefined') { if (view) view.hint('GIF encoder failed to load'); return; }
+    const src = renderer.domElement;
+    const scale = Math.min(1, GIF_MAX_W / src.width);
+    const gw = Math.max(2, Math.round(src.width * scale));
+    const gh = Math.max(2, Math.round(src.height * scale));
+    const tmp = document.createElement('canvas');
+    tmp.width = gw; tmp.height = gh;
+    gifRec = {
+      enc: new GifEncoder(gw, gh, { delayMs: GIF_STEP_MS, loop: true }),
+      tctx: tmp.getContext('2d'), gw, gh, next: 0, count: 0
+    };
+    const b = document.getElementById('bGif');
+    if (b) b.classList.add('on');
+    if (view) view.hint('Recording GIF…');
+  }
+
+  function recordGifFrame(now) {
+    const r = gifRec;
+    if (now < r.next) return;                                   // keep 12.5 fps whatever the screen rate
+    r.next = now + GIF_STEP_MS;
+    const src = renderer.domElement;
+    r.tctx.drawImage(src, 0, 0, src.width, src.height, 0, 0, r.gw, r.gh);
+    // Same watermark rule as ds.js: 9% of the short side, 85% opacity.
+    const logo = view && view.logoImage ? view.logoImage() : null;
+    if (logo) {
+      const ls = Math.max(20, Math.round(Math.min(r.gw, r.gh) * 0.09));
+      r.tctx.save(); r.tctx.globalAlpha = 0.85;
+      r.tctx.drawImage(logo, r.gw - ls - 8, r.gh - ls - 8, ls, ls);
+      r.tctx.restore();
+    }
+    r.enc.addFrame(r.tctx.getImageData(0, 0, r.gw, r.gh).data);
+    r.count++;
+    if (r.count < GIF_FRAMES) return;
+    // Done: stop recording first so the loop does not add frames while encoding.
+    gifRec = null;
+    if (view) view.hint('Encoding GIF…');
+    setTimeout(() => {
+      const bytes = r.enc.finish();
+      const CHUNK = 0x8000; let str = '';
+      for (let p = 0; p < bytes.length; p += CHUNK) str += String.fromCharCode.apply(null, bytes.subarray(p, p + CHUNK));
+      send({ type: 'gif', b64: btoa(str), frames: r.count, source: '' });
+      const b = document.getElementById('bGif');
+      if (b) b.classList.remove('on');
+      if (view) view.hint('GIF ready — choose where to save it');
+    }, 0);
+  }
+
+  { const b = document.getElementById('bGif'); if (b) b.addEventListener('click', exportNetGif); }
+
   /* ── 4.0.0: register with the shared view dock (media/viewcontrols.js) ──
      Limits match the wheel / pinch clamp (8..150); home = rig.home() distance. */
   const view = window.__vyuhaView || null;
@@ -1168,7 +1230,7 @@
   }
   // Test hook (like window.__vyuhaDs in ds.js): lets tests/v4-test.js read the
   // size uniform and camera goal. Nothing in the extension depends on it.
-  window.__vyuhaNet = { uniforms: uniforms, rig: rig };
+  window.__vyuhaNet = { uniforms: uniforms, rig: rig, exportGif: exportNetGif };
 
   function loop() {
     requestAnimationFrame(loop);
@@ -1253,6 +1315,10 @@
       sCalls.textContent = renderer.info.render.calls;
       fpsAcc = 0; fpsN = 0; msAcc = 0; statT = 0;
     }
+    // 4.1.0: the GIF recorder copies the frame right after it is drawn -- in
+    // the same task, so it works without preserveDrawingBuffer (which would
+    // slow every normal frame). Clock time in ms paces it. See recordGifFrame().
+    if (gifRec) recordGifFrame(t * 1000);
   }
 
   /* ══════════════════════════════════════════════════════════

@@ -236,7 +236,40 @@ export function commandFor(file: string, overrides: Record<string, string>): str
     }
   }
 
+  // 4.1.0 fix: Java's single-file launcher (`java File.java`) compiles ONLY that
+  // one file, so a program using the Vyuha.java helper failed with
+  // "cannot find symbol: Vyuha" -- even the bundled BinarySearch.java example.
+  // When the helper sits beside the program, compile both into a temp folder
+  // and run the class from there. Without the helper, the 3.x command is kept.
+  if (ext === 'java') {
+    const dir = path.dirname(file);
+    const helper = path.join(dir, 'Vyuha.java');
+    if (fs.existsSync(helper) && path.resolve(file) !== path.resolve(helper)) {
+      const out = expand('${bin}', file) + '-classes';          // per-file, per-process temp dir
+      const cls = javaMainClass(file);
+      return `javac -d "${out}" "${file}" "${helper}" && java -cp "${out}" ${cls}`;
+    }
+  }
+
   return expand(template, file);
+}
+
+/**
+ * 4.1.0: the class `java -cp` must start, e.g. "BinarySearch" or, when the file
+ * declares `package algo;`, "algo.BinarySearch". Java requires a public class to
+ * match its file name, so the file name is the class name.
+ */
+export function javaMainClass(file: string): string {
+  const name = path.basename(file).replace(/\.java$/i, '');
+  let pkg = '';
+  try {
+    // Only the head of the file matters; the package line must come first.
+    const head = fs.readFileSync(file, 'utf8').slice(0, 4000)
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const m = /^\s*package\s+([\w.]+)\s*;/m.exec(head);
+    if (m) pkg = m[1] + '.';
+  } catch { /* unreadable file: the plain name is the best guess */ }
+  return pkg + name;
 }
 
 export function knownExtensions(overrides: Record<string, string>): string[] {

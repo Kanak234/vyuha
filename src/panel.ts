@@ -18,6 +18,8 @@ export type ViewEvent =
   // 4.0.0: a unit was DOUBLE-clicked in a spec's network view -> reveal and
   // highlight the line that defines its layer (extension.ts revealLayer).
   | { kind: 'reveal'; view: GraphView; layer: number }
+  // 4.1.0: the network view recorded a GIF (base64) -> extension.ts saveGif.
+  | { kind: 'gif'; view: GraphView; b64: string; frames: number }
   | { kind: 'decision'; view: GraphView; action: string; confidence: number }
   | { kind: 'activations'; view: GraphView; values: Record<string, number> }
   | { kind: 'export'; view: GraphView; payload: unknown }
@@ -94,6 +96,9 @@ export class GraphView {
         break;
       case 'select':
         this.onEvent({ kind: 'select', view: this, layer: m.layer, unit: m.unit, label: String(m.label ?? '') });
+        break;
+      case 'gif':
+        this.onEvent({ kind: 'gif', view: this, b64: String(m.b64 ?? ''), frames: Number(m.frames) || 0 });
         break;
       case 'reveal':
         // Posted by media/main.js on a double-tap; the layer index is looked up

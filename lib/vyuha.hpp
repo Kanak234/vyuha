@@ -20,6 +20,21 @@
 #include <map>
 #include <utility>
 
+/*
+ * VYUHA 4.1.0 -- source line of the call, for "double-tap a node to open its line".
+ * WHY: C++ has no portable stack trace, but GCC, Clang and MSVC 19.26+ offer
+ *      __builtin_LINE(). Used as a DEFAULT ARGUMENT it is evaluated at the
+ *      caller, so vyuha::array(a) records the line of the user's own call.
+ * FLOW: every public function takes `int line = VYUHA_HERE` last and hands it to
+ *      emit(), which adds "line" to the JSON. Other compilers get 0 = no line.
+ * NOTE: the line belongs to the file that made the call.
+ */
+#if defined(__GNUC__) || defined(__clang__) || (defined(_MSC_VER) && _MSC_VER >= 1926)
+#define VYUHA_HERE __builtin_LINE()
+#else
+#define VYUHA_HERE 0
+#endif
+
 namespace vyuha {
 
 inline std::string esc(const std::string& s) {
@@ -40,7 +55,14 @@ inline std::string esc(const std::string& s) {
 }
 
 /** Everything here funnels through this one line. */
-inline void emit(const std::string& json) {
+inline void emit(const std::string& json, int line = 0) {
+    // 4.1.0: splice "line" in before the closing brace of an object payload.
+    if (line > 0 && !json.empty() && json[json.size() - 1] == '}') {
+        std::string body = json.substr(0, json.size() - 1);
+        bool empty = body.find_last_not_of(" \t") == std::string::npos || body[body.find_last_not_of(" \t")] == '{';
+        std::cout << "@vyuha " << body << (empty ? "" : ",") << "\"line\":" << line << "}" << std::endl;
+        return;
+    }
     std::cout << "@vyuha " << json << std::endl;
 }
 
@@ -80,13 +102,14 @@ void array(const std::vector<T>& values,
            const std::vector<int>& active = {},
            const std::string& title = "",
            const std::string& note = "",
-           const std::vector<int>& done = {}) {
+           const std::vector<int>& done = {},
+           int line = VYUHA_HERE) {
     std::ostringstream o;
     o << "{\"kind\":\"array\",\"array\":" << detail::numbers(values)
       << detail::meta(title, note)
       << detail::indices(active, "active")
       << detail::indices(done, "done") << "}";
-    emit(o.str());
+    emit(o.str(), line);
 }
 
 /* ── stack, queue, linked list ───────────────────────────────── */
@@ -94,27 +117,31 @@ void array(const std::vector<T>& values,
 template <typename T>
 void sequence(const std::vector<T>& values, const char* kind,
               const std::vector<int>& active = {},
-              const std::string& title = "", const std::string& note = "") {
+              const std::string& title = "", const std::string& note = "",
+              int line = VYUHA_HERE) {
     std::ostringstream o;
     o << "{\"kind\":\"" << kind << "\",\"" << kind << "\":" << detail::numbers(values)
       << detail::meta(title, note) << detail::indices(active, "active") << "}";
-    emit(o.str());
+    emit(o.str(), line);
 }
 
 template <typename T>
-void stack(const std::vector<T>& v, const std::string& title = "", const std::string& note = "") {
-    sequence(v, "stack", {}, title, note);
+void stack(const std::vector<T>& v, const std::string& title = "", const std::string& note = "",
+           int line = VYUHA_HERE) {
+    sequence(v, "stack", {}, title, note, line);
 }
 
 template <typename T>
-void queue(const std::vector<T>& v, const std::string& title = "", const std::string& note = "") {
-    sequence(v, "queue", {}, title, note);
+void queue(const std::vector<T>& v, const std::string& title = "", const std::string& note = "",
+           int line = VYUHA_HERE) {
+    sequence(v, "queue", {}, title, note, line);
 }
 
 template <typename T>
 void list(const std::vector<T>& v, const std::vector<int>& active = {},
-          const std::string& title = "", const std::string& note = "") {
-    sequence(v, "list", active, title, note);
+          const std::string& title = "", const std::string& note = "",
+          int line = VYUHA_HERE) {
+    sequence(v, "list", active, title, note, line);
 }
 
 /* ── matrix ──────────────────────────────────────────────────── */
@@ -122,7 +149,8 @@ void list(const std::vector<T>& v, const std::vector<int>& active = {},
 template <typename T>
 void matrix(const std::vector<std::vector<T> >& rows,
             const std::vector<std::string>& active = {},
-            const std::string& title = "", const std::string& note = "") {
+            const std::string& title = "", const std::string& note = "",
+            int line = VYUHA_HERE) {
     std::ostringstream o;
     o << "{\"kind\":\"matrix\",\"matrix\":[";
     for (size_t r = 0; r < rows.size(); ++r) {
@@ -139,7 +167,7 @@ void matrix(const std::vector<std::vector<T> >& rows,
         o << "]";
     }
     o << "}";
-    emit(o.str());
+    emit(o.str(), line);
 }
 
 /* ── tree ────────────────────────────────────────────────────── */
@@ -163,10 +191,11 @@ inline std::string treeJson(const TreeNode* n) {
     return o.str();
 }
 
-inline void tree(const TreeNode* root, const std::string& title = "", const std::string& note = "") {
+inline void tree(const TreeNode* root, const std::string& title = "", const std::string& note = "",
+                 int line = VYUHA_HERE) {
     std::ostringstream o;
     o << "{\"kind\":\"tree\",\"tree\":" << treeJson(root) << detail::meta(title, note) << "}";
-    emit(o.str());
+    emit(o.str(), line);
 }
 
 /* ── graph ───────────────────────────────────────────────────── */
@@ -175,7 +204,8 @@ inline void tree(const TreeNode* root, const std::string& title = "", const std:
 inline void graph(const std::map<std::string, std::vector<std::pair<std::string, double> > >& adj,
                   const std::vector<std::string>& active = {},
                   const std::string& title = "", const std::string& note = "",
-                  bool directed = true) {
+                  bool directed = true,
+                  int line = VYUHA_HERE) {
     std::ostringstream o;
     o << "{\"kind\":\"graph\",\"directed\":" << (directed ? "true" : "false") << ",\"adjacency\":{";
     bool first = true;
@@ -203,7 +233,7 @@ inline void graph(const std::map<std::string, std::vector<std::pair<std::string,
         o << "]";
     }
     o << "}";
-    emit(o.str());
+    emit(o.str(), line);
 }
 
 } // namespace vyuha

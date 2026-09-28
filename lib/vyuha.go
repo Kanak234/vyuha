@@ -14,10 +14,35 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 )
+
+// vyuhaCallerLine (VYUHA 4.1.0) finds the line in YOUR code that asked for this
+// frame, so double-tapping a node in VYUHA can open and highlight it.
+// It walks up the call stack and returns the first frame that is not in this
+// helper file (vyuha.go). Returns 0 when it cannot tell; then no line is sent.
+func vyuhaCallerLine() int {
+	for skip := 2; skip < 16; skip++ {
+		_, file, line, ok := runtime.Caller(skip)
+		if !ok {
+			return 0
+		}
+		if filepath.Base(file) != "vyuha.go" {
+			return line
+		}
+	}
+	return 0
+}
 
 // VyuhaEmit writes one frame. Everything else here funnels through it.
 func VyuhaEmit(payload map[string]interface{}) {
+	// 4.1.0: stamp the caller's line unless the payload already has one.
+	if _, has := payload["line"]; !has {
+		if ln := vyuhaCallerLine(); ln > 0 {
+			payload["line"] = ln
+		}
+	}
 	b, err := json.Marshal(payload)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "vyuha: could not encode frame:", err)

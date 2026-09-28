@@ -44,9 +44,16 @@ Lines come for free — nothing to add to your code:
 | any program (auto-visualize) | the function / loop / branch / print that node stands for |
 | **Debug Visualize** (Python, C/C++) | that call frame's current line — also for its local variables |
 | `vyuha.py`, `vyuha.js`, `Vyuha.java` helpers | the line in your script that called the helper |
+| `vyuha.h` (C), `vyuha.hpp` (C++), `vyuha.go` helpers | same — since 4.1.0 (C via `__LINE__` macros, C++ via `__builtin_LINE()`, Go via `runtime.Caller`) |
 | raw `@vyuha` JSON | `"line"` on the frame, or on any single node |
 
 ---
+
+### 4.1.0
+
+- **Java + helper fixed.** `java File.java` compiles only one file, so any program using `Vyuha.java` (including the bundled `BinarySearch.java`) failed with *cannot find symbol*. VYUHA now compiles both with `javac` into a temp folder when the helper sits beside your file. Needs a JDK (`javac`), not just a JRE.
+- **C, C++ and Go helpers report source lines**, so double-tap works there too.
+- **Export GIF in the network view** — records ~3 seconds of the live animation (40 frames, KP watermark).
 
 ## What it draws
 
