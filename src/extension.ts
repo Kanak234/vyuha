@@ -156,6 +156,10 @@ let ctxNow: RunCtx | undefined;
 
 const MAX_AUTO_FRAMES = 60;
 
+// 4.1.1: when the last run of each file started, to drop duplicate triggers.
+let lastRunStart = { file: '', at: 0 };
+const DUPLICATE_RUN_MS = 800;
+
 async function runAndVisualize(target?: vscode.Uri) {
   const editor = vscode.window.activeTextEditor;
   const uri = target || (editor ? editor.document.uri : undefined);
@@ -163,6 +167,15 @@ async function runAndVisualize(target?: vscode.Uri) {
     vscode.window.showInformationMessage('Open a source file, then run VYUHA on it.');
     return;
   }
+
+  // 4.1.1 fix: one gesture sometimes fires the command twice within ~1 ms (seen
+  // on a real machine: two temp scripts 1 ms apart). The second run then
+  // deleted the first run's script while the terminal was still starting up,
+  // and the shell printed "cannot open /tmp/vyuha-....sh". A second request for
+  // the SAME file within 800 ms is a duplicate, not a real re-run, so drop it.
+  const nowMs = Date.now();
+  if (lastRunStart.file === uri.fsPath && nowMs - lastRunStart.at < DUPLICATE_RUN_MS) return;
+  lastRunStart = { file: uri.fsPath, at: nowMs };
 
   // Save first, so the program on disk is the one in the editor.
   const doc = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString());
@@ -439,11 +452,26 @@ function stopEverything() {
   removeScratch();
 }
 
+/**
+ * 4.1.1 fix: delete a finished run's temp files LATER, not at once.
+ * Why: sendText() only queues text. If the terminal is still starting (e.g. the
+ * Python extension activating a virtual environment), the queued command runs
+ * after we move on -- and deleting its script right away made the shell fail
+ * with "cannot open ...sh". Two minutes is far longer than any shell start-up;
+ * the files are a few hundred bytes in the OS temp folder, so waiting is free.
+ */
+const SCRATCH_GRACE_MS = 120000;
 function removeScratch() {
-  for (const f of cleanupFiles) {
-    try { fs.unlinkSync(f); } catch { /* already gone, or still being written */ }
-  }
+  const files = cleanupFiles;
   cleanupFiles = [];
+  if (!files.length) return;
+  const t = setTimeout(() => {
+    for (const f of files) {
+      try { fs.unlinkSync(f); } catch { /* already gone */ }
+    }
+  }, SCRATCH_GRACE_MS);
+  // Never keep VS Code's extension host alive just for this timer.
+  if (typeof (t as any).unref === 'function') (t as any).unref();
 }
 
 function stopRun() {

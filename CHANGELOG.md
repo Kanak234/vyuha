@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.1.1 — 2026-09-29
+
+### Fixed
+- **"sh: 0: cannot open /tmp/vyuha-….sh: No such file" in the VYUHA terminal.**
+  Seen on a real machine: one gesture started two runs 1 ms apart, and the second
+  deleted the first run's script while the terminal was still starting (Python
+  extension activating a virtual environment). Duplicate requests for the same
+  file within 800 ms are now dropped, and a run's temp files are deleted two
+  minutes later instead of immediately.
+
+
 ## 4.1.0 — 2026-09-28
 
 ### Fixed
