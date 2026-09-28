@@ -35,7 +35,7 @@ export function buildHtml(webview: vscode.Webview, extUri: vscode.Uri, mode: 'ne
 <title>VYUHA</title>
 </head>
 <body data-mode="${mode}">
-<div id="fail" role="alert"><p><b>WebGL didn't start</b>This view renders on the GPU. Turn on hardware acceleration, or run <code>code --ignore-gpu-blocklist</code>.</p></div>
+<div id="fail" role="alert"><p><b>WebGL didn't start</b>This view renders on the GPU. Turn on hardware acceleration, or run <code>code --ignore-gpu-blocklist</code>. On Linux, the <b>snap</b> build of VS Code often cannot use the GPU &mdash; install the <code>.deb</code> / <code>.rpm</code> from code.visualstudio.com instead.</p></div>
 <div id="invalid" role="alert"><p><b>Nothing to draw</b><span id="invalidMsg"></span></p></div>
 <div id="labels" aria-hidden="true"></div>
 <div id="tip" aria-hidden="true"></div>

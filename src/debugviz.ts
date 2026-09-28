@@ -475,6 +475,231 @@ function driveGdb(gdb: string, bin: string, file: string, isCpp: boolean, work: 
   });
 }
 
+/* ── Java backend (jdb, 4.1.2) ─────────────────────────────────────
+ * WHY: Debug Visualize covered Python and C/C++ only; Java students had to add
+ *      print calls. jdb ships with every JDK, so no extra install is needed.
+ * HOW (flow):
+ *   1. javac -g compiles the program (and Vyuha.java if it sits beside it)
+ *      into a temp folder, with full debug info so lines and locals exist.
+ *   2. jdb is started on the main class and driven like a person would type:
+ *      each command is sent only after jdb shows its prompt ("main[1] ").
+ *   3. Per step: `where` gives the call stack, `locals` the top frame's
+ *      variables, `dump` expands arrays. That becomes the SAME step message
+ *      the Python tracer and gdb produce, so stackFrame() draws it unchanged.
+ *   4. Frames outside the user's file (Vyuha.java, other classes) are left
+ *      with `step up`; JDK classes are skipped by jdb's default exclude list.
+ * LIMITS: locals are read for the top frame only (other frames show their
+ *   line); at most MAX_STEPS steps; arrays are cut to 40 elements.
+ */
+const JAVA_MAX_STEPS = 600;
+
+function runJavaDebug(file: string, timeoutMs: number, emit: DebugEmit,
+                      log: (s: string) => void): Promise<DebugResult> {
+  return new Promise(resolve => {
+    const javac = which('javac');
+    const jdb = which('jdb');
+    if (!javac || !jdb) {
+      resolve({ ok: false, language: 'Java', tool: 'none', frames: 0, exitCode: null,
+        summary: 'Java Debug Visualize needs a JDK (javac + jdb). A JRE alone is not enough — install e.g. openjdk-21-jdk.' });
+      return;
+    }
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'vyuha-jdb-'));
+    const dir = path.dirname(file);
+    const helper = path.join(dir, 'Vyuha.java');
+    const sources = [file];
+    if (fs.existsSync(helper) && path.resolve(helper) !== path.resolve(file)) sources.push(helper);
+    const cls = javaMainClassOf(file);
+    const userBase = path.basename(file);
+
+    execFile(javac, ['-g', '-d', work, ...sources], { maxBuffer: 8 * 1024 * 1024 },
+      (err: any, _o: string, stderr: string) => {
+        if (err) {
+          try { fs.rmSync(work, { recursive: true, force: true }); } catch { /* */ }
+          resolve({ ok: false, language: 'Java', tool: 'javac', frames: 0, exitCode: null,
+            summary: 'Compilation for debugging failed:\n' + (stderr || String(err)).trim().slice(0, 400) });
+          return;
+        }
+        driveJdb(jdb, work, cls, userBase, dir, timeoutMs, emit, log, resolve);
+      });
+  });
+}
+
+/** Class name incl. package ("algo.Sort"), read from the file head. */
+function javaMainClassOf(file: string): string {
+  const name = path.basename(file).replace(/\.java$/i, '');
+  try {
+    const head = fs.readFileSync(file, 'utf8').slice(0, 4000)
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const m = /^\s*package\s+([\w.]+)\s*;/m.exec(head);
+    if (m) return m[1] + '.' + name;
+  } catch { /* plain name */ }
+  return name;
+}
+
+/** Turn one jdb value into something stackFrame can draw. */
+function jdbValue(raw: string): any {
+  const v = raw.trim();
+  if (/^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(v)) return Number(v);
+  if (v === 'true' || v === 'false') return v === 'true';
+  if (v === 'null') return null;
+  const str = /^"(.*)"$/.exec(v);
+  if (str) return str[1];
+  const ch = /^'(.)'$/.exec(v);
+  if (ch) return ch[1];
+  // "instance of java.util.ArrayList(id=812)" -> "ArrayList"
+  const inst = /^instance of ([\w$.]+)/.exec(v);
+  if (inst) return inst[1].split('.').pop();
+  return v;
+}
+
+function driveJdb(jdb: string, work: string, cls: string, userBase: string, cwd: string,
+                  timeoutMs: number, emit: DebugEmit, log: (s: string) => void,
+                  resolve: (r: DebugResult) => void) {
+  const title = 'debug · ' + userBase;
+  let frames = 0;
+  let finished = false;
+  let exited = false;
+  let dbg: ReturnType<typeof spawn> | null = null;
+
+  // Why two processes: if jdb launches the program itself, the program's output
+  // comes out of jdb's own stdout, interleaved mid-line with jdb's prompts (seen
+  // in testing: "main[1] 1],"title":..."), which breaks prompt detection. So the
+  // program runs in its own JVM with the JDWP debug agent (suspended at start,
+  // free port chosen by the OS) and jdb ATTACHES to it. Program output then
+  // arrives cleanly on the java process's stdout and goes to the log.
+  const java = which('java') || 'java';
+  const vm = spawn(java, [
+    '-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=127.0.0.1:0',
+    '-cp', work, cls
+  ], { cwd });
+
+  const finish = (code: number | null, note?: string) => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+    try { if (dbg && dbg.stdin) dbg.stdin.write('quit\n'); } catch { /* */ }
+    setTimeout(() => {
+      try { if (dbg) dbg.kill(); } catch { /* */ }
+      try { vm.kill(); } catch { /* */ }
+    }, 300);
+    try { fs.rmSync(work, { recursive: true, force: true }); } catch { /* */ }
+    resolve({
+      ok: frames > 0, language: 'Java', tool: 'jdb + javac', frames, exitCode: code,
+      summary: frames > 0
+        ? frames + ' debugger steps traced with jdb — no print instrumentation needed.' + (note ? ' ' + note : '')
+        : 'jdb produced no steps.' + (note ? ' ' + note : '')
+    });
+  };
+  const timer = setTimeout(() => finish(null, 'Stopped at the time limit.'), Math.max(timeoutMs, 20000));
+  vm.on('error', err => finish(null, 'Could not start java: ' + err.message));
+  vm.on('exit', code => { exited = true; if (waiterFlush) waiterFlush(); if (!dbg) finish(code); });
+
+  let waiterFlush: (() => void) | null = null;
+  let vmOut = '';
+  let attached = false;
+  vm.stdout!.on('data', d => {
+    vmOut += d.toString();
+    let nl;
+    while ((nl = vmOut.indexOf('\n')) !== -1) {
+      const line = vmOut.slice(0, nl); vmOut = vmOut.slice(nl + 1);
+      const pm = /Listening for transport dt_socket at address: (?:[\d.]+:)?(\d+)/.exec(line);
+      if (pm && !attached) { attached = true; attach(pm[1]); continue; }
+      if (line.trim()) log(line);                  // the program's own output
+    }
+  });
+  vm.stderr!.on('data', d => log(d.toString().trimEnd()));
+
+  function attach(port: string) {
+    const child = spawn(jdb, ['-attach', '127.0.0.1:' + port], { cwd });
+    dbg = child;
+    let buf = '';
+    let waiter: { until: RegExp; res: (text: string) => void } | null = null;
+
+    // jdb answers some commands at once (where, locals, dump: text + prompt) and
+    // others LATER (step, cont: a prompt right away, then "Step completed" /
+    // "Breakpoint hit" and a second prompt). So every command waits for its own
+    // "done" pattern, not just for the next prompt.
+    const THREAD_PROMPT = /[\w$.-]+\[\d+\] $/;
+    const EXITED = /The application exited|application exited/;
+    const STEP_DONE = /(?:Step completed|Breakpoint hit)[^\n]*\n[\s\S]*[\w$.-]+\[\d+\] $/;
+
+    const flush = () => {
+      if (!waiter) return;
+      if (waiter.until.test(buf) || EXITED.test(buf) || exited) {
+        const text = buf; buf = '';
+        const w = waiter; waiter = null;
+        w.res(text);
+      }
+    };
+    waiterFlush = flush;
+    child.stdout!.on('data', d => { buf += d.toString(); flush(); });
+    child.stderr!.on('data', d => { buf += d.toString(); flush(); });
+    child.on('exit', () => { exited = true; flush(); finish(0); });
+    child.on('error', err => finish(null, 'Could not start jdb: ' + err.message));
+
+    const ask = (cmd: string | null, until: RegExp = THREAD_PROMPT) => new Promise<string>(res => {
+      waiter = { until, res };
+      if (cmd !== null) { try { child.stdin!.write(cmd + '\n'); } catch { /* closed */ } }
+      flush();
+    });
+    // jdb prints big line numbers with a thousands comma ("1,620").
+    const num = (t: string) => Number(t.replace(/,/g, ''));
+
+    (async () => {
+      await ask(null);                                 // "VM Started ... main[1] "
+      await ask('stop in ' + cls + '.main');
+      let out = await ask('cont', STEP_DONE);          // "Breakpoint hit ... main[1] "
+
+      for (let n = 0; n < JAVA_MAX_STEPS && !finished; n++) {
+        if (EXITED.test(out) || exited) break;
+        const where = await ask('where', /\[1\][^\n]*\n[\s\S]*[\w$.-]+\[\d+\] $/);
+        // "  [1] Fact.fact (Fact.java:4)"  -- top of stack first
+        const stack: any[] = [];
+        const re = /\[(\d+)\] ([\w$.<>]+) \(([^:()]+):([\d,]+)\)/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(where)) !== null) {
+          const fn = m[2].split('.').pop() || m[2];
+          stack.push({ func: fn, line: num(m[4]), file: m[3], locals: {} });
+        }
+        // main has returned (only JDK frames left): let the program finish.
+        if (!stack.some(f => f.file === userBase)) { out = await ask('cont', EXITED); break; }
+        if (stack[0].file !== userBase) {
+          // Inside the helper or another class: leave it and keep going.
+          out = await ask('step up', STEP_DONE);
+          continue;
+        }
+
+        // Locals of the top frame; arrays expanded with `dump`.
+        const loc = await ask('locals', /(?:Method arguments|Local variables|No local variables)[\s\S]*[\w$.-]+\[\d+\] $/);
+        const locals: Record<string, any> = {};
+        for (const line of loc.split('\n')) {
+          const lm = /^\s*([\w$]+) = (.*)$/.exec(line);
+          if (!lm) continue;
+          const name = lm[1]; const raw = lm[2].trim();
+          if (/^instance of [\w$.]+\[\d+\]/.test(raw)) {
+            const dump = await ask('dump ' + name, /=\s*\{[\s\S]*\}[\s\S]*[\w$.-]+\[\d+\] $/);
+            const dm = /=\s*\{([\s\S]*?)\}/.exec(dump);
+            locals[name] = dm ? dm[1].split(',').map(x => x.trim()).filter(x => x.length).slice(0, 40).map(jdbValue) : jdbValue(raw);
+          } else {
+            locals[name] = jdbValue(raw);
+          }
+        }
+        stack[0].locals = locals;
+
+        emit(stackFrame({
+          __vyuha_dbg: 'step', event: 'line', line: stack[0].line, func: stack[0].func,
+          stack: stack.slice().reverse(),              // stackFrame wants bottom -> top
+          userFile: userBase
+        }, title));
+        frames++;
+
+        out = await ask('step', STEP_DONE);
+      }
+      finish(0, frames >= JAVA_MAX_STEPS ? 'Stopped after ' + JAVA_MAX_STEPS + ' steps.' : undefined);
+    })().catch(e => finish(null, String(e && e.message || e)));
+  }
+}
+
 /* ── entry point ───────────────────────────────────────────────── */
 
 export function debugVisualize(file: string, timeoutMs: number,
@@ -483,8 +708,9 @@ export function debugVisualize(file: string, timeoutMs: number,
   if (ext === 'py' || ext === 'py3') return runPythonDebug(file, timeoutMs, emit, log);
   if (ext === 'c') return runGdbDebug(file, false, timeoutMs, emit, log);
   if (['cpp', 'cc', 'cxx', 'c++'].includes(ext)) return runGdbDebug(file, true, timeoutMs, emit, log);
+  if (ext === 'java') return runJavaDebug(file, timeoutMs, emit, log);   // 4.1.2
   return Promise.resolve({
     ok: false, language: ext || 'unknown', tool: 'none', frames: 0, exitCode: null,
-    summary: 'Debugger visualisation supports Python and C/C++ so far. This file is .' + ext + '.'
+    summary: 'Debugger visualisation supports Python, C/C++ and Java so far. This file is .' + ext + '.'
   });
 }

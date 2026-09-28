@@ -404,6 +404,45 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vyuha-v4-'));
     } else skip('Go helper', 'go not installed');
   }
 
+  /* ══ H · 4.1.2 Java Debug Visualize (real javac + jdb) ════════════ */
+  console.log('— java debug visualize (4.1.2) —');
+  if (spawnSync('jdb', ['-version']).status === 0 || spawnSync('javac', ['-version']).status === 0 && has('jdb')) {
+    const jd = path.join(tmp, 'jdbg'); fs.mkdirSync(jd);
+    const f = path.join(jd, 'Fact.java');
+    fs.writeFileSync(f, [
+      'public class Fact {',                       // 1
+      '    static int fact(int n) {',              // 2
+      '        if (n <= 1) return 1;',             // 3
+      '        int r = n * fact(n - 1);',          // 4
+      '        return r;',                         // 5
+      '    }',                                     // 6
+      '    public static void main(String[] args) {', // 7
+      '        int[] a = {5, 2, 9};',              // 8
+      '        int x = fact(3);',                  // 9
+      '        System.out.println(x + a[0]);',     // 10
+      '    }',                                     // 11
+      '}'].join('\n'));
+    const frames = []; const logs = [];
+    const res = await debugVisualize(f, 30000, fr => frames.push(fr), s => logs.push(s));
+    ok('java debug: traced without print calls', res.ok && res.frames > 5, res.summary);
+    const depth = fr => fr.nodes.filter(n => n.group === 'stack').length;
+    ok('java debug: recursion depth reaches 4 frames (main + fact x3)', Math.max(...frames.map(depth)) === 4);
+    ok('java debug: call stack shrinks back to main', frames.length > 0 && depth(frames[frames.length - 1]) === 1);
+    const labels = frames.flatMap(fr => fr.nodes.map(n => n.label));
+    ok('java debug: locals are read (r = 6, x = 6)', labels.includes('r = 6') && labels.includes('x = 6'));
+    ok('java debug: arrays are expanded (a = {5, 2, 9})', frames.some(fr => ['5', '2', '9'].every(v => fr.nodes.some(n => n.group === 'array' && n.label === v))));
+    ok('java debug: program output reaches the log, separate from jdb', logs.includes('11'), JSON.stringify(logs));
+    ok('java debug: every stack node carries a line', frames.every(fr => fr.nodes.filter(n => n.group === 'stack').every(n => n.line > 0)));
+
+    const jb = path.join(tmp, 'jdbg2'); fs.mkdirSync(jb);
+    fs.copyFileSync(path.join(__dirname, '..', 'examples', 'BinarySearch.java'), path.join(jb, 'BinarySearch.java'));
+    fs.copyFileSync(path.join(__dirname, '..', 'lib', 'Vyuha.java'), path.join(jb, 'Vyuha.java'));
+    const fr2 = [];
+    const r2 = await debugVisualize(path.join(jb, 'BinarySearch.java'), 30000, fr => fr2.push(fr), () => {});
+    ok('java debug: bundled example with helper traces and finishes', r2.ok && fr2.length > 5 && !/time limit/.test(r2.summary), r2.summary);
+    ok('java debug: helper frames are stepped over', fr2.every(fr => fr.nodes.filter(n => n.group === 'stack').every(n => !/^(array|emit)\b/.test(n.label))));
+  } else skip('java debug visualize', 'jdb not installed');
+
   /* ══ E · helpers, run for real ═══════════════════════════════════ */
   console.log('— helpers —');
   const lib = path.join(__dirname, '..', 'lib');

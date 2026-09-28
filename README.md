@@ -42,12 +42,17 @@ Lines come for free — nothing to add to your code:
 | where the picture comes from | line opened |
 |---|---|
 | any program (auto-visualize) | the function / loop / branch / print that node stands for |
-| **Debug Visualize** (Python, C/C++) | that call frame's current line — also for its local variables |
+| **Debug Visualize** (Python, C/C++, Java) | that call frame's current line — also for its local variables |
 | `vyuha.py`, `vyuha.js`, `Vyuha.java` helpers | the line in your script that called the helper |
 | `vyuha.h` (C), `vyuha.hpp` (C++), `vyuha.go` helpers | same — since 4.1.0 (C via `__LINE__` macros, C++ via `__builtin_LINE()`, Go via `runtime.Caller`) |
 | raw `@vyuha` JSON | `"line"` on the frame, or on any single node |
 
 ---
+
+### 4.1.2
+
+- **Debug Visualize for Java.** No print calls needed: VYUHA compiles with `javac -g`, runs the program under the JDWP agent and drives `jdb` step by step — call stack, the top frame's locals and arrays, every line. Needs a JDK. Helper code (`Vyuha.java`) is stepped over.
+- **Clearer "WebGL didn't start" help:** on Linux the snap build of VS Code often has no GPU access; the message now says to use the `.deb` / `.rpm`.
 
 ### 4.1.0
 
@@ -241,3 +246,9 @@ and `.s` artifacts it opens are the compiler's real output, not a simulation.
 ## Credits
 
 Built by **Kanak Prabhakar** ([Cooding with Kanak](https://kanakprabhakar.online)). The KP mark appears in the view's title panel and in the corner of every exported GIF.
+
+---
+
+## Troubleshooting
+
+**"WebGL didn't start" on Linux.** Check `snap list code`. If VS Code is the snap build, remove it (`sudo snap remove code`) and install the `.deb` from code.visualstudio.com — settings and extensions stay in `~/.config/Code` and `~/.vscode`. Otherwise try `code --ignore-gpu-blocklist`, and make sure hardware acceleration is not disabled in `~/.vscode/argv.json`.

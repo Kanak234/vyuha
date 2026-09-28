@@ -1,5 +1,28 @@
 # Changelog
 
+## 4.1.2 — 2026-09-29
+
+### Added
+- **Debug Visualize for Java** (`src/debugviz.ts`, `runJavaDebug`). Compiles with
+  `javac -g` (plus `Vyuha.java` if beside the file), starts the program in its own
+  JVM with the JDWP agent (suspended, OS-chosen port) and attaches `jdb`, so the
+  program's output never mixes with jdb's prompts. Each step: `where` (stack),
+  `locals` (top frame), `dump` (arrays, first 40 elements). Frames in other files
+  are left with `step up`; JDK code is skipped by jdb's default excludes. Package
+  declarations and line numbers above 999 ("1,620") are handled. Up to 600 steps.
+
+### Changed
+- "WebGL didn't start" now also tells Linux users that the **snap** build of VS
+  Code often has no GPU access and to install the `.deb` / `.rpm` (the cause on a
+  real Ubuntu machine; neither the driver nor VYUHA was at fault). README gained
+  a Troubleshooting section.
+
+### Verified
+- `npm run verify` passes; new tests run real `javac` + `jdb` on a recursive
+  program (factorial: frames grow and shrink, locals `n`, `r`, `x`, arrays) and on
+  the bundled `BinarySearch.java` with the helper beside it.
+
+
 ## 4.1.1 — 2026-09-29
 
 ### Fixed
