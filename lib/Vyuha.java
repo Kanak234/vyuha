@@ -17,8 +17,46 @@ public final class Vyuha {
     /* ── the one call everything funnels through ─────────────── */
 
     public static void emit(String json) {
-        System.out.println("@vyuha " + json);
+        // VYUHA 4.0.0: add the caller's line so a double-tapped node can open it.
+        // Only for JSON objects that do not already name a line.
+        String out = json;
+        String t = json.trim();
+        if (t.endsWith("}") && !t.contains("\"line\"")) {
+            int ln = callerLine();
+            if (ln > 0) {
+                int close = t.lastIndexOf('}');
+                String body = t.substring(0, close).trim();
+                // "{}" has nothing before the brace, so no comma is needed.
+                out = body + (body.endsWith("{") ? "" : ",") + "\"line\":" + ln + "}";
+            }
+        }
+        System.out.println("@vyuha " + out);
         System.out.flush();
+    }
+
+    /**
+     * VYUHA 4.0.0 -- which line of YOUR program produced this frame?
+     *
+     * Why: VYUHA opens and highlights this line when a node is double-tapped.
+     * How: the bottom of the stack is the program's main(); its source file is
+     * the file VYUHA ran. Walk from the top and return the first frame outside
+     * this class that is in that same file. Returns -1 when unknown (no debug
+     * line info, or main lives elsewhere) and emit() then sends no line.
+     */
+    private static int callerLine() {
+        try {
+            StackTraceElement[] st = Thread.currentThread().getStackTrace();
+            if (st.length == 0) return -1;
+            String mainFile = st[st.length - 1].getFileName();
+            if (mainFile == null) return -1;
+            for (StackTraceElement e : st) {
+                if (e.getClassName().equals(Vyuha.class.getName())) continue;
+                if (mainFile.equals(e.getFileName()) && e.getLineNumber() > 0) return e.getLineNumber();
+            }
+        } catch (RuntimeException ignored) {
+            // A helper must never crash the user's program over a line number.
+        }
+        return -1;
     }
 
     /* ── array ───────────────────────────────────────────────── */

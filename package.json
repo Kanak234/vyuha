@@ -2,7 +2,7 @@
   "name": "vyuha",
   "displayName": "VYUHA",
   "description": "Run your code in any language and watch it draw itself in 3D — every program, even one that prints only hello world.",
-  "version": "3.1.1",
+  "version": "4.0.0",
   "publisher": "KANAKPRABHAKAR",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -509,6 +509,13 @@
           "default": true,
           "description": "Show floating labels."
         },
+        "vyuha.nodeSize": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.4,
+          "maximum": 2.5,
+          "markdownDescription": "Starting size of nodes (spheres, bars, halos) in the 3D view. The **Size** slider in the view dock changes it live; keyboard `[` and `]` too. Layout spacing is never scaled, so nodes do not move."
+        },
         "vyuha.syncCursor": {
           "type": "boolean",
           "default": true,
@@ -517,7 +524,7 @@
         "vyuha.revealOnClick": {
           "type": "boolean",
           "default": true,
-          "description": "Jump to the line that defines a layer when you click one of its units."
+          "description": "Network spec view: move the cursor to the line that defines a layer when you single-click one of its units. Double-click always opens and highlights it."
         },
         "vyuha.traceEndpoint": {
           "type": "string",
@@ -525,7 +532,29 @@
           "description": "HTTP endpoint returning a live activation trace, e.g. http://127.0.0.1:8000/trace. Leave empty to run the forward pass locally."
         }
       }
-    }
+    },
+    "colors": [
+      {
+        "id": "vyuha.sourceLineBackground",
+        "description": "Background of the source line VYUHA highlights when you double-click a node.",
+        "defaults": {
+          "dark": "#38e8ff26",
+          "light": "#0a84ff1f",
+          "highContrast": "#38e8ff40",
+          "highContrastLight": "#0a84ff33"
+        }
+      },
+      {
+        "id": "vyuha.sourceLineBorder",
+        "description": "Left border and scrollbar mark of the source line VYUHA highlights when you double-click a node.",
+        "defaults": {
+          "dark": "#38e8ff",
+          "light": "#0a84ff",
+          "highContrast": "#38e8ff",
+          "highContrastLight": "#0a84ff"
+        }
+      }
+    ]
   },
   "scripts": {
     "vendor": "node scripts/vendor-three.js",
@@ -533,7 +562,7 @@
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run vendor && npm run compile",
     "package": "vsce package",
-    "test": "node tests/render-smoke.js && node tests/ds-smoke.js && node tests/runner-test.js && node tests/auto-test.js && node tests/compiler-test.js",
+    "test": "node tests/render-smoke.js && node tests/ds-smoke.js && node tests/runner-test.js && node tests/auto-test.js && node tests/compiler-test.js && node tests/v4-test.js",
     "verify": "npm run vendor && npm run compile && npm test",
     "build": "npm run compile"
   },

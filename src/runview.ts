@@ -136,6 +136,9 @@ export function buildHtml(webview: vscode.Webview, extUri: vscode.Uri, mode: 'ne
 
 <script nonce="${nonce}" src="${media('three.min.js')}"></script>
 <script nonce="${nonce}" src="${media('bridge.js')}"></script>
+<!-- 4.0.0: shared Zoom/Size dock + double-tap detector. Must load after bridge.js
+     (it reads which renderer is awake) and before main.js / ds.js (they register with it). -->
+<script nonce="${nonce}" src="${media('viewcontrols.js')}"></script>
 <script nonce="${nonce}" src="${media('main.js')}"></script>
 <script nonce="${nonce}" src="${media('gifenc.js')}"></script>
 <script nonce="${nonce}" src="${media('ds.js')}"></script>
@@ -150,7 +153,10 @@ export function readConfig() {
     glow: c.get<boolean>('glow', true),
     autoOrbit: c.get<boolean>('autoOrbit', true),
     labels: c.get<boolean>('labels', true),
-    frameDelay: c.get<number>('frameDelay', 420)
+    frameDelay: c.get<number>('frameDelay', 420),
+    // 4.0.0: starting value of the Size slider in the view dock (0.4x - 2.5x).
+    // Sent with every config push, so changing the setting updates open views.
+    nodeSize: c.get<number>('nodeSize', 1)
   };
 }
 
@@ -160,6 +166,10 @@ export type RunEvent =
   | { kind: 'ready'; view: RunView }
   | { kind: 'frame'; view: RunView; index: number }
   | { kind: 'select'; view: RunView; id: string; label: string; line?: number }
+  // 4.0.0: a node was DOUBLE-clicked / double-tapped. `line` is 1-based and
+  // already resolved in the webview (node.line, else frame.line). extension.ts
+  // turns this into "open the run file, centre the line, highlight it".
+  | { kind: 'reveal'; view: RunView; id: string; line: number }
   | { kind: 'error'; view: RunView; message: string }
   | { kind: 'export'; view: RunView; payload: unknown }
   | { kind: 'gif'; view: RunView; b64: string; frames: number; source: string }
@@ -245,6 +255,13 @@ export class RunView {
           id: String(m.id ?? ''), label: String(m.label ?? ''),
           line: typeof m.line === 'number' ? m.line : undefined
         });
+        break;
+      case 'revealLine':
+        // Posted by media/ds.js on a double-tap. Validate here, at the trust
+        // boundary: only a positive whole number is a usable line.
+        if (typeof m.line === 'number' && Number.isInteger(m.line) && m.line > 0) {
+          this.onEvent({ kind: 'reveal', view: this, id: String(m.id ?? ''), line: m.line });
+        }
         break;
       case 'export':
         this.onEvent({ kind: 'export', view: this, payload: m.payload });

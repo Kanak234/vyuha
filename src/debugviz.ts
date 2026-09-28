@@ -143,16 +143,30 @@ function stackFrame(step: any, title: string): VFrame {
   const stack: any[] = Array.isArray(step.stack) ? step.stack : [];
 
   // Each call frame is a node in a vertical tower; the top of stack is active.
+  // 4.0.0: the line to open when a node of this call frame is double-tapped.
+  // Only trusted when positive, and (for gdb, which reports every frame up to
+  // libc) only when the frame lives in the user's own file. The Python tracer
+  // already filters to the user's file and sends no `file` field.
+  const userBase = typeof step.userFile === 'string' ? step.userFile : undefined;
+  const frameLine = (sf: any): number | undefined => {
+    const ln = Number(sf && sf.line);
+    if (!Number.isInteger(ln) || ln <= 0) return undefined;
+    if (sf.file !== undefined && userBase !== undefined && sf.file !== userBase) return undefined;
+    return ln;
+  };
+
   stack.forEach((sf: any, depth: number) => {
     const isTop = depth === stack.length - 1;
     const frameId = 'f' + depth;
+    const fl = frameLine(sf);          // shared by this frame and all its locals
     nodes.push({
       id: frameId,
       label: (sf.func || '?') + '  ·  line ' + (sf.line ?? '?'),
       state: isTop ? (step.event === 'return' ? 'done' : 'active') : 'visited',
       x: 0, y: (stack.length - 1 - depth) * 3, z: 0,
       group: 'stack',
-      note: 'depth ' + depth
+      note: 'depth ' + depth,
+      line: fl
     });
     if (depth > 0) {
       edges.push({ from: 'f' + (depth - 1), to: frameId, directed: true, state: 'visited' });
@@ -175,7 +189,8 @@ function stackFrame(step: any, title: string): VFrame {
             y: (stack.length - 1 - depth) * 3 + 0.6,
             z: -1 - i * 1.2,
             group: 'array',
-            note: k + '[' + j + ']'
+            note: k + '[' + j + ']',
+            line: fl
           });
         });
         // label node for the array name
@@ -184,7 +199,8 @@ function stackFrame(step: any, title: string): VFrame {
           label: k + '[]',
           state: isTop ? 'active' : 'normal',
           x: 3, y: (stack.length - 1 - depth) * 3 + 0.6, z: -1 - i * 1.2,
-          group: 'varname'
+          group: 'varname',
+          line: fl
         });
       } else {
         nodes.push({
@@ -192,7 +208,8 @@ function stackFrame(step: any, title: string): VFrame {
           label: k + ' = ' + fmtVal(v),
           state: isTop ? 'active' : 'normal',
           x: 4, y: (stack.length - 1 - depth) * 3 - i * 0.9, z: 1,
-          group: 'local'
+          group: 'local',
+          line: fl
         });
         edges.push({ from: frameId, to: frameId + ':' + k, directed: false, state: 'normal' });
       }
@@ -380,11 +397,11 @@ function driveGdb(gdb: string, bin: string, file: string, isCpp: boolean, work: 
     '        try:',
     '            fr.select()',
     '            sal = fr.find_sal()',
-    '            stack.append({"func": fr.name() or "?", "line": sal.line if sal else 0, "locals": locals_here()})',
+    '            stack.append({"func": fr.name() or "?", "line": sal.line if sal else 0, "file": os.path.basename(sal.symtab.filename) if sal and sal.symtab else "", "locals": locals_here()})',
     '        except Exception:',
     '            pass',
     '    chain[-1].select()',
-    '    msg = {"__vyuha_dbg":"step","event":"line","line":line,"func":func,"stack":stack}',
+    '    msg = {"__vyuha_dbg":"step","event":"line","line":line,"func":func,"stack":stack,"userFile":USERFILE}',
     '    gdb.write("##VYUHADBG##" + json.dumps(msg) + "\\n", gdb.STDERR)',
     '    gdb.flush()',
     '    return True',

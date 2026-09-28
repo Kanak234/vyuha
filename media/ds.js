@@ -61,7 +61,10 @@
     glow: true,
     running: false,
     selected: null,
-    file: ''
+    file: '',
+    // 4.0.0: node size multiplier from the view dock's Size slider (0.4x-2.5x).
+    // Layout spacing is NOT scaled -- only the meshes -- so positions never jump.
+    nodeSize: 1
   };
 
   /* ── scene ────────────────────────────────────────────────── */
@@ -151,6 +154,7 @@
     }
   });
   renderer.domElement.addEventListener('pointerup', function (e) {
+    // A press that did not move is a click/tap (a moved one was an orbit/pan).
     if (drag && !drag.moved) pick(e);
     drag = null;
   });
@@ -464,6 +468,7 @@
       }
       n.data = d;
       n.target.copy(pos[d.id]);
+      n.baseY = pos[d.id].y;          // 4.0.0: layout height before any size offset
 
       var col = STATE_COL[d.state] || STATE_COL.normal;
       n.mesh.material.color.setHex(col);
@@ -477,12 +482,11 @@
       // Bars carry magnitude in array and matrix views.
       var h = 1;
       if (vs && typeof d.value === 'number') h = 0.6 + 3.4 * ((d.value - vs.lo) / (vs.hi - vs.lo));
-      if (wantBox) {
-        n.mesh.scale.set(1.5, h, 1.5);
-        n.target.y += (h - 1) / 2;
-      } else {
-        n.mesh.scale.setScalar(d.state === 'active' ? 1.22 : 1);
-      }
+      // 4.0.0: remember shape + bar height, then size everything in one place
+      // (applyNodeScale) so the Size slider can re-apply it without a new frame.
+      n.box = wantBox;
+      n.h = h;
+      applyNodeScale(n);
 
       if (n.labelText !== (d.label || d.id)) {
         if (n.label) { root.remove(n.label); n.label.material.dispose(); }
@@ -570,7 +574,9 @@
         _dir.copy(_b).sub(_a);
         var len = _dir.length() || 1;
         _dir.multiplyScalar(1 / len);
-        _m.copy(_b).addScaledVector(_dir, -0.95);
+        // Stop the arrow at the sphere surface: radius 0.62 x size, plus room
+        // for half the cone. At size 1 this is the 3.x value of 0.95.
+        _m.copy(_b).addScaledVector(_dir, -(0.62 * S.nodeSize + 0.33));
         _q.setFromUnitVectors(_up, _dir);
         _mat.compose(_m, _q, new THREE.Vector3(1, 1, 1));
         arrowHeads.setMatrixAt(i, _mat);
@@ -594,6 +600,32 @@
     var scrub = $('tScrub');
     scrub.max = String(Math.max(0, S.frames.length - 1));
     scrub.value = String(Math.max(0, S.index));
+  }
+
+  /**
+   * 4.0.0 -- size one node according to S.nodeSize.
+   * Called by applyFrame (new data) and by setNodeSize (Size slider moved).
+   *   bars   : width/depth AND height scale, and the bar is lifted so its base
+   *            stays on the same floor line (base = layoutY - 0.5, as in 3.x).
+   *   spheres: uniform scale; the "active" pulse size is applied in loop().
+   *   halos  : the glow sprite follows the sphere so it never looks detached.
+   */
+  function applyNodeScale(n) {
+    var s = S.nodeSize;
+    if (n.box) {
+      n.mesh.scale.set(1.5 * s, n.h * s, 1.5 * s);
+      n.target.y = n.baseY + (n.h * s - 1) / 2;
+    } else {
+      n.mesh.scale.setScalar((n.data && n.data.state === 'active' ? 1.22 : 1) * s);
+      n.target.y = n.baseY;
+    }
+    if (n.halo) n.halo.scale.set(3.6 * s, 3.6 * s, 1);
+  }
+
+  /** 4.0.0 -- the view dock calls this when the Size slider moves. */
+  function setNodeSize(v) {
+    S.nodeSize = v;
+    Object.keys(nodes).forEach(function (id) { applyNodeScale(nodes[id]); });
   }
 
   function fitCamera(immediate) {
@@ -660,8 +692,38 @@
       (d.note ? row('note', d.note) : '') +
       (incoming.length ? row('in', incoming.join(', ')) : '') +
       (outgoing.length ? row('out', outgoing.join(', ')) : '');
+    // 4.0.0: show which line this node maps to and how to open it.
+    var ln = lineOf(d, frame);
+    $('inspectBody').innerHTML += ln
+      ? row('line', String(ln)) + '<p class="lineHint">Double-click the node to open line ' + ln + ' in the editor.</p>'
+      : '<p class="lineHint">No source line for this node.</p>';
     $('inspect').classList.add('on');
-    send({ type: 'selectNode', id: id, label: d.label, line: frame && frame.line });
+    // Single click: inspector only. The extension no longer moves the editor here.
+    send({ type: 'selectNode', id: id, label: d.label, line: ln });
+
+    // 4.0.0: second tap on the same node within 400 ms / 10 px -> open + highlight.
+    if (view && view.doubleTap('ds:' + id, e.clientX, e.clientY)) revealNode(id, d, ln);
+  }
+
+  /**
+   * 4.0.0 -- which source line does a node stand for?
+   * A node's own line wins (auto-visualize, Debug Visualize, per-node payloads);
+   * otherwise the frame's line (the helper call that drew the whole picture).
+   */
+  function lineOf(d, frame) {
+    if (d && typeof d.line === 'number' && d.line > 0) return d.line;
+    if (frame && typeof frame.line === 'number' && frame.line > 0) return frame.line;
+    return 0;
+  }
+
+  /** 4.0.0 -- ask the extension to open + highlight the line (runview.ts 'revealLine'). */
+  function revealNode(id, d, ln) {
+    if (!ln) {
+      if (view) view.hint('No source line for "' + (d.label || id) + '"');
+      return;
+    }
+    send({ type: 'revealLine', id: id, line: ln });
+    if (view) view.hint('Line ' + ln + ' highlighted in the editor');
   }
 
   function row(k, v) {
@@ -765,12 +827,13 @@
       n.mesh.position.copy(n.pos);
       if (n.halo) n.halo.position.copy(n.pos);
       if (n.label) {
-        var lift = n.mesh.geometry === boxGeo ? (n.mesh.scale.y / 2 + 0.85) : 1.15;
+        // Label sits just above the mesh; 4.0.0 scales the sphere offset with size.
+        var lift = n.mesh.geometry === boxGeo ? (n.mesh.scale.y / 2 + 0.85) : (0.53 + 0.62 * S.nodeSize);
         n.label.position.set(n.pos.x, n.pos.y + lift, n.pos.z);
       }
       if (n.data.state === 'active') {
         var p = 1 + Math.sin(clock.elapsedTime * 6) * 0.06;
-        if (n.mesh.geometry !== boxGeo) n.mesh.scale.setScalar(1.22 * p);
+        if (n.mesh.geometry !== boxGeo) n.mesh.scale.setScalar(1.22 * p * S.nodeSize);
       }
     });
     updateEdgeGeometry();
@@ -784,6 +847,8 @@
     }
 
     applyCamera(dt);
+    // 4.0.0: keep the dock's Zoom slider in step with wheel / fit / reset.
+    if (view) view.sync(MODE, rig.goalDist);
     renderer.render(scene, camera);
 
     var ms = performance.now() - t0;
@@ -915,6 +980,17 @@
       renderer.render(scene, camera);
       // Downscale the live GL canvas into the temp 2D canvas, then read it.
       tctx.drawImage(renderer.domElement, 0, 0, srcW, srcH, 0, 0, gw, gh);
+      // 4.0.0: stamp the KP watermark bottom-right on every exported frame.
+      // Size = 9% of the shorter side (min 20px) so it stays readable in small
+      // GIFs; 85% opacity so it marks ownership without hiding the picture.
+      var logo = view && view.logoImage ? view.logoImage() : null;
+      if (logo) {
+        var ls = Math.max(20, Math.round(Math.min(gw, gh) * 0.09));
+        tctx.save();
+        tctx.globalAlpha = 0.85;
+        tctx.drawImage(logo, gw - ls - 8, gh - ls - 8, ls, ls);
+        tctx.restore();
+      }
       var data = tctx.getImageData(0, 0, gw, gh).data;
       enc.addFrame(data);
       i++;
@@ -963,8 +1039,23 @@
       S.glow = c.glow;
       $('tGlow').classList.toggle('on', S.glow);
     }
+    // 4.0.0: the vyuha.nodeSize setting seeds the Size slider (both modes share it).
+    if (typeof c.nodeSize === 'number' && view) view.setSize(c.nodeSize);
+  }
+
+  /* ── 4.0.0: register with the shared view dock (media/viewcontrols.js) ──
+     The dock drives this renderer's camera distance and node size. Limits
+     match the mouse wheel's clamp above (6..220); home = the opening distance. */
+  var view = window.__vyuhaView || null;
+  if (view) {
+    view.register(MODE, {
+      min: 6, max: 220, home: 34,
+      getDist: function () { return rig.goalDist; },
+      setDist: function (d) { rig.goalDist = clamp(d, 6, 220); },
+      setSize: setNodeSize
+    });
   }
 
   loop();
-  window.__vyuhaDs = { state: S, nodes: function () { return nodes; }, show: show };
+  window.__vyuhaDs = { state: S, nodes: function () { return nodes; }, show: show, rig: rig };
 })();

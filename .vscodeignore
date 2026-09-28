@@ -20,3 +20,9 @@ START-HERE.md
 # new one. It stays in git; it must not go in the vsix.
 vyuha-2.0.0/**
 CHANGELOG-3.1.0.md
+
+# 4.0.0 design brief lives in git, not in the package.
+docs/**
+
+# CI config is for the repository, not for users.
+.github/**

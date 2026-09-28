@@ -1,5 +1,7 @@
 # VYUHA
 
+<img src="media/logo-mark.png" alt="KP" width="48" align="right">
+
 **व्यूह** — an arranged formation. Run your code in any language and watch the structure it builds, in 3D, inside VS Code.
 
 ![runs on any language](https://img.shields.io/badge/languages-50%2B-38e8ff) ![no telemetry](https://img.shields.io/badge/telemetry-none-35f0a8)
@@ -24,6 +26,25 @@ for i in range(len(a) - 1):
 ```
 
 Press **Ctrl+Alt+V** and the sort plays back in front of you.
+
+---
+
+## New in 4.0.0 — size control and "double-tap to see the code"
+
+Both came straight from a tester's feedback.
+
+**View dock (left edge, every panel width).** A **Zoom** slider and a **Size** slider, each with `+` / `−` buttons and a live readout. Zoom stays in sync with the mouse wheel and pinch. Size runs from 0.4× to 2.5× and grows spheres, bars, halos and arrowheads without moving anything. Keys: `+` `-` zoom, `]` `[` size, `0` back to 1.0×.
+
+**Double-click (or double-tap) any node** and the editor jumps to the line that produced it, centres it and highlights the whole line. A single click still just opens the inspector, which now shows the node's line.
+
+Lines come for free — nothing to add to your code:
+
+| where the picture comes from | line opened |
+|---|---|
+| any program (auto-visualize) | the function / loop / branch / print that node stands for |
+| **Debug Visualize** (Python, C/C++) | that call frame's current line — also for its local variables |
+| `vyuha.py`, `vyuha.js`, `Vyuha.java` helpers | the line in your script that called the helper |
+| raw `@vyuha` JSON | `"line"` on the frame, or on any single node |
 
 ---
 
@@ -131,7 +152,7 @@ All of these are valid — use whichever is least work in your language.
 {"layers": [...]}                                // a neural network spec
 ```
 
-Every payload also accepts `title`, `note`, and `line` (a source line number — clicking a node then jumps there).
+Every payload also accepts `title`, `note`, and `line` (a 1-based source line — double-clicking a node opens and highlights it). Since 4.0.0 any node inside `nodes` or `tree` can carry its own `line` too, which wins over the frame's.
 
 Prefixes `@vyuha`, `#vyuha`, `##vyuha` and `//vyuha` all work, so the marker can live inside a comment in languages where that reads better.
 
@@ -165,6 +186,8 @@ Prefixes `@vyuha`, `#vyuha`, `##vyuha` and `//vyuha` all work, so the marker can
 | `vyuha.frameDelay` | `420` | milliseconds each frame is held |
 | `vyuha.glow` | `true` | bloom pass — turn off on a weak GPU |
 | `vyuha.labels` | `true` | floating labels |
+| `vyuha.nodeSize` | `1` | starting node size (0.4–2.5); the Size slider changes it live |
+| `vyuha.revealOnClick` | `true` | network specs: single-click also moves the cursor to the layer |
 | `vyuha.traceEndpoint` | `""` | HTTP endpoint serving live neural activations |
 
 ---
@@ -205,3 +228,9 @@ measured facts on every node: how many lines the preprocessor produced, how many
 assembly instructions the compiler emitted, which of your functions got the most,
 how big the object file and binary are, and how long each stage took. The `.i`
 and `.s` artifacts it opens are the compiler's real output, not a simulation.
+
+---
+
+## Credits
+
+Built by **Kanak Prabhakar** ([Cooding with Kanak](https://kanakprabhakar.online)). The KP mark appears in the view's title panel and in the corner of every exported GIF.

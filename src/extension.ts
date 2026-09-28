@@ -12,6 +12,7 @@ import { Payload, VFrame, parseLine } from './protocol';
 import { analyzeSource, stagesFor, autoFrame, initialState, AutoState, CodeGraph, Stage } from './codegraph';
 import { visualizeCompilation, PipelineReport } from './compilerviz';
 import { debugVisualize } from './debugviz';
+import { SourceHighlighter } from './highlight';
 
 let views: GraphView[] = [];
 let active: GraphView | undefined;
@@ -23,10 +24,14 @@ let diagnostics: vscode.DiagnosticCollection;
 let status: vscode.StatusBarItem;
 let out: vscode.OutputChannel;
 let ctx: vscode.ExtensionContext;
+// 4.0.0: one shared highlighter for "double-tap a node -> highlight its line".
+// Created in activate(), disposed with the extension via context.subscriptions.
+let highlighter: SourceHighlighter;
 
 export function activate(context: vscode.ExtensionContext) {
   ctx = context;
   tree = new LayerTree();
+  highlighter = new SourceHighlighter();
   diagnostics = vscode.languages.createDiagnosticCollection('vyuha');
   out = vscode.window.createOutputChannel('VYUHA');
 
@@ -37,7 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
   const provider = new GraphEditorProvider(context.extensionUri, onEvent, track);
 
   context.subscriptions.push(
-    diagnostics, status, treeView, out,
+    diagnostics, status, treeView, out, highlighter,
     vscode.window.registerCustomEditorProvider(GraphEditorProvider.viewType, provider, {
       webviewOptions: { retainContextWhenHidden: true },
       supportsMultipleEditorsPerDocument: false
@@ -495,7 +500,14 @@ function onRunEvent(e: RunEvent) {
       tree.highlightFrame(e.index);
       break;
     case 'select':
-      if (e.line !== undefined && lastRunFile) void revealSourceLine(lastRunFile, e.line);
+      // 4.0.0 behaviour change: a SINGLE click only opens the inspector inside
+      // the graph. It used to move the editor too, which yanked the user's scroll
+      // position while they were just exploring nodes. Opening code is now the
+      // deliberate double-tap below.
+      break;
+    case 'reveal':
+      // Double-tap on a node: open the file that was run, centre + highlight the line.
+      if (lastRunFile) void revealSourceLine(lastRunFile, e.line);
       break;
     case 'export':
       void saveTrace(e.payload, 'vyuha-frames.json');
@@ -515,16 +527,14 @@ function onRunEvent(e: RunEvent) {
   }
 }
 
+/**
+ * Open `file` at a 1-based protocol line and highlight it (4.0.0).
+ * Converts to VS Code's 0-based lines here, in one place, so every caller can
+ * speak the protocol's 1-based numbers. Failure is silent on purpose: the file
+ * may have been moved since the run, which is not worth an error toast.
+ */
 async function revealSourceLine(file: string, line: number) {
-  try {
-    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
-    const l = Math.max(0, Math.min(line - 1, doc.lineCount - 1));
-    await vscode.window.showTextDocument(doc, {
-      viewColumn: vscode.ViewColumn.One,
-      preserveFocus: true,
-      selection: new vscode.Range(l, 0, l, 0)
-    });
-  } catch { /* the file may have moved; not worth an error toast */ }
+  await highlighter.reveal(vscode.Uri.file(file), line - 1);
 }
 
 /* ══ helper libraries and examples ═════════════════════════════ */
@@ -617,9 +627,16 @@ function onEvent(e: ViewEvent) {
       break;
     }
     case 'select': {
+      // Single click keeps its 3.x behaviour here (cursor jump, no highlight),
+      // still controlled by the vyuha.revealOnClick setting.
       if (vscode.workspace.getConfiguration('vyuha').get<boolean>('revealOnClick', true)) {
         void revealLayer(e.view, e.layer);
       }
+      break;
+    }
+    case 'reveal': {
+      // 4.0.0: double-tap on a unit always reveals AND highlights its layer line.
+      void revealLayer(e.view, e.layer, true);
       break;
     }
     case 'decision': {
@@ -686,9 +703,11 @@ async function newSpecFile() {
   ).then(pick => { if (pick) void vscode.commands.executeCommand('workbench.action.files.saveAs'); });
 }
 
-async function revealLayer(view: GraphView, layerIndex: number) {
+async function revealLayer(view: GraphView, layerIndex: number, highlight = false) {
   const anchor = view.state ? view.state.anchors[layerIndex] : undefined;
   if (!anchor) return;
+  // 4.0.0: the double-tap path also paints the line (anchors are already 0-based).
+  if (highlight) { await highlighter.reveal(view.uri, anchor.line); return; }
   const doc = await vscode.workspace.openTextDocument(view.uri);
   await vscode.window.showTextDocument(doc, {
     viewColumn: vscode.ViewColumn.One,

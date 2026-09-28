@@ -15,6 +15,7 @@ Usage:
 """
 
 import json as _json
+import os as _os
 import sys as _sys
 
 __all__ = [
@@ -23,8 +24,49 @@ __all__ = [
 ]
 
 
+# VYUHA 4.0.0: absolute paths of this helper and of the script being run.
+# Worked out once at import, because every emit() needs them.
+_HERE = _os.path.abspath(__file__)
+_MAIN = _os.path.abspath(_sys.argv[0]) if _sys.argv and _sys.argv[0] else None
+
+
+def _caller_line():
+    """
+    VYUHA 4.0.0 -- which line of YOUR script produced this frame?
+
+    Why: double-tapping a node in VYUHA opens and highlights its source line.
+    Before 4.0.0 you had to pass line=... by hand, so almost nobody did and the
+    double-tap had nothing to open. Now the helper finds the line itself.
+
+    How: walk up the call stack from here and return the first frame that sits
+    in the main script (sys.argv[0]). Frames inside this helper and inside your
+    other modules are skipped, so the answer is always a line of the file VYUHA
+    ran -- the file the editor will open. Returns None when it cannot tell
+    (e.g. interactive shell, or the tracer in Debug Visualize), and emit() then
+    simply sends no line.
+    """
+    if _MAIN is None:
+        return None
+    try:
+        f = _sys._getframe(1)
+        while f is not None:
+            fn = _os.path.abspath(f.f_code.co_filename)
+            if fn == _MAIN and fn != _HERE:
+                return f.f_lineno
+            f = f.f_back
+    except Exception:
+        pass
+    return None
+
+
 def emit(payload):
     """Write one frame. Everything else here funnels through this."""
+    # 4.0.0: stamp the caller's line unless the caller already gave one
+    # (line=... always wins). Only dict payloads can carry a line.
+    if isinstance(payload, dict) and "line" not in payload:
+        ln = _caller_line()
+        if ln is not None:
+            payload["line"] = ln
     _sys.stdout.write("@vyuha " + _json.dumps(payload, default=str) + "\n")
     _sys.stdout.flush()
 

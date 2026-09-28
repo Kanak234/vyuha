@@ -352,7 +352,10 @@
     uHiOn:  { value: 0 },
     uBoot:  { value: REDUCED ? 1 : 0 },
     uGlow:  { value: GLOW_TEX },
-    uScale: { value: 1 }
+    uScale: { value: 1 },
+    // 4.0.0: node-size multiplier from the view dock's Size slider. A uniform,
+    // not per-instance matrices, so resizing thousands of units costs nothing.
+    uNodeSize: { value: 1 }
   };
 
   /* ── nodes: instanced cores ────────────────────────────── */
@@ -361,13 +364,13 @@
     attribute float aAct;
     attribute float aFocus;   // 0 dim · 1 normal · 2 highlighted
     attribute float aLayer;
-    uniform float uBoot;
+    uniform float uBoot; uniform float uNodeSize;
     varying vec3 vColor; varying float vAct; varying float vFocus;
     varying vec3 vN; varying vec3 vV;
     void main(){
       vColor = aColor; vAct = aAct; vFocus = aFocus;
       float boot = clamp(uBoot * 14.0 - aLayer, 0.0, 1.0);
-      float s = (0.55 + aAct * 0.85 + step(1.5, aFocus) * 0.5) * boot;
+      float s = (0.55 + aAct * 0.85 + step(1.5, aFocus) * 0.5) * boot * uNodeSize;
       vec4 mv = modelViewMatrix * instanceMatrix * vec4(position * s, 1.0);
       vN = normalize(mat3(modelViewMatrix) * mat3(instanceMatrix) * normal);
       vV = normalize(-mv.xyz);
@@ -391,14 +394,14 @@
     attribute float aFocus;
     attribute float aLayer;
     attribute float aSize;
-    uniform float uBoot; uniform float uScale;
+    uniform float uBoot; uniform float uScale; uniform float uNodeSize;
     varying vec3 vColor; varying float vI;
     void main(){
       vColor = aColor;
       float boot = clamp(uBoot * 14.0 - aLayer, 0.0, 1.0);
       vI = (0.10 + aAct * 0.85) * mix(0.12, 1.0, step(0.5, aFocus)) * (1.0 + step(1.5, aFocus) * 1.4) * boot;
       vec4 mv = modelViewMatrix * vec4(position, 1.0);
-      gl_PointSize = aSize * uScale * (1.0 + aAct * 1.5) * (260.0 / max(-mv.z, 0.001));
+      gl_PointSize = aSize * uScale * uNodeSize * (1.0 + aAct * 1.5) * (260.0 / max(-mv.z, 0.001));
       gl_Position = projectionMatrix * mv;
     }`;
   const GLOW_FRAG = `
@@ -471,7 +474,7 @@
     /* cores */
     const coreGeo = new THREE.IcosahedronGeometry(0.34, 1);
     const nodeMat = new THREE.ShaderMaterial({
-      uniforms: { uBoot: uniforms.uBoot },
+      uniforms: { uBoot: uniforms.uBoot, uNodeSize: uniforms.uNodeSize },
       vertexShader: NODE_VERT, fragmentShader: NODE_FRAG
     });
     nodeMesh = new THREE.InstancedMesh(coreGeo, nodeMat, N);
@@ -509,7 +512,7 @@
     gGeo.setAttribute('aLayer', new THREE.BufferAttribute(nLay.slice(), 1));
     gGeo.setAttribute('aSize', new THREE.BufferAttribute(gSize, 1));
     glowPts = new THREE.Points(gGeo, new THREE.ShaderMaterial({
-      uniforms: { uGlow: uniforms.uGlow, uBoot: uniforms.uBoot, uScale: uniforms.uScale },
+      uniforms: { uGlow: uniforms.uGlow, uBoot: uniforms.uBoot, uScale: uniforms.uScale, uNodeSize: uniforms.uNodeSize },
       vertexShader: GLOW_VERT, fragmentShader: GLOW_FRAG,
       transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
     }));
@@ -952,7 +955,17 @@
     if (!drag) return;
     if (moved < 6) {
       const id = pick();
-      if (id >= 0) { selectNode(id); traceFrom(id); }
+      if (id >= 0) {
+        selectNode(id); traceFrom(id);
+        // 4.0.0: a second tap on the same unit within 400 ms -> ask the extension
+        // to open + highlight the line that defines this unit's layer
+        // (panel.ts 'reveal' -> extension.ts revealLayer(..., highlight)).
+        if (view && view.doubleTap('net:' + id, e.clientX, e.clientY)) {
+          const n = net.nodes[id];
+          send({ type: 'reveal', layer: n.li, unit: n.ni });
+          view.hint('Layer ' + (n.li + 1) + ' highlighted in the spec');
+        }
+      }
       else if (S.selected < 0) clearTrace();
     }
     drag = null; cv.style.cursor = 'grab';
@@ -1142,6 +1155,21 @@
     }
   }
 
+  /* ── 4.0.0: register with the shared view dock (media/viewcontrols.js) ──
+     Limits match the wheel / pinch clamp (8..150); home = rig.home() distance. */
+  const view = window.__vyuhaView || null;
+  if (view) {
+    view.register(MODE, {
+      min: 8, max: 150, home: 58,
+      getDist: () => rig.tDist,
+      setDist: d => { rig.tDist = clamp(d, 8, 150); },
+      setSize: v => { uniforms.uNodeSize.value = v; }
+    });
+  }
+  // Test hook (like window.__vyuhaDs in ds.js): lets tests/v4-test.js read the
+  // size uniform and camera goal. Nothing in the extension depends on it.
+  window.__vyuhaNet = { uniforms: uniforms, rig: rig };
+
   function loop() {
     requestAnimationFrame(loop);
     /* Asleep while the data-structure renderer owns the screen: keep the
@@ -1171,6 +1199,8 @@
 
     if (S.orbit && !REDUCED) rig.tTheta += dt * 0.055;
     rig.apply(dt);
+    // 4.0.0: keep the dock's Zoom slider in step with wheel / pinch / reset / focus.
+    if (view) view.sync(MODE, rig.tDist);
     updateHover();
     updateLabels();
 
@@ -1239,6 +1269,8 @@
       vSpeed.textContent = S.speed.toFixed(1) + '\u00d7';
     }
     if (typeof cfg.glow === 'boolean') { S.bloom = cfg.glow; setToggle('bBloom', S.bloom); }
+    // 4.0.0: vyuha.nodeSize seeds the shared Size slider.
+    if (typeof cfg.nodeSize === 'number' && view) view.setSize(cfg.nodeSize);
     if (typeof cfg.autoOrbit === 'boolean') { S.orbit = cfg.autoOrbit; setToggle('bOrbit', S.orbit); }
     if (typeof cfg.labels === 'boolean') {
       S.labels = cfg.labels;

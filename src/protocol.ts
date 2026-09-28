@@ -38,6 +38,13 @@ export interface VNode {
   z?: number;
   note?: string;
   group?: string;
+  /**
+   * 4.0.0: 1-based source line this node stands for. Double-tapping the node
+   * opens and highlights it. Optional; when absent the renderer falls back to
+   * the frame's `line`. Filled automatically by auto-visualize, Debug Visualize
+   * and the Python / JS / Java helpers; raw payloads may send it per node.
+   */
+  line?: number;
 }
 
 export interface VEdge {
@@ -113,7 +120,7 @@ export function normalise(raw: unknown): Payload {
   const meta = {
     title: str(o.title ?? o.name),
     note: str(o.note ?? o.message ?? o.step),
-    line: num(o.line),
+    line: lineNo(o.line),
     layout: str(o.layout)
   };
 
@@ -217,7 +224,8 @@ function fromNested(root: any, o: Record<string, any>, meta: Meta = {}): VFrame 
       label: label(n.label ?? n.value ?? n.key ?? id),
       value: num(n.value ?? n.key),
       state: asState(n.state),
-      note: str(n.note)
+      note: str(n.note),
+      line: lineNo(n.line)          // 4.0.0: per-node source line in nested trees
     }));
     if (parent !== null) edges.push({ from: parent, to: id, label: slot, state: asState(n.edgeState), directed: true });
     const kids: Array<[any, string | undefined]> = Array.isArray(n.children)
@@ -273,7 +281,8 @@ function fromNodes(rawNodes: any[], rawEdges: any, o: Record<string, any>, meta:
       state: n.state ? asState(n.state) : (active.has(id) ? 'active' : done.has(id) ? 'done' : 'normal'),
       row: num(n.row), col: num(n.col),
       x: num(n.x), y: num(n.y), z: num(n.z),
-      note: str(n.note), group: str(n.group)
+      note: str(n.note), group: str(n.group),
+      line: lineNo(n.line)          // 4.0.0: per-node source line in node lists
     });
   });
   const known = new Set(nodes.map(n => n.id));
@@ -306,7 +315,8 @@ function frame(kind: DsKind, nodes: VNode[], edges: VEdge[], meta: Meta): VFrame
 /** Drop undefined keys so posted messages stay small and diffable. */
 function cleanNode(n: Partial<VNode> & { id: string; label: string }): VNode {
   const out: any = { id: n.id, label: n.label, state: n.state ?? 'normal' };
-  (['value', 'row', 'col', 'x', 'y', 'z', 'note', 'group'] as const).forEach(k => {
+  // 'line' added in 4.0.0 so per-node lines survive to the webview.
+  (['value', 'row', 'col', 'x', 'y', 'z', 'note', 'group', 'line'] as const).forEach(k => {
     if (n[k] !== undefined) out[k] = n[k];
   });
   return out as VNode;
@@ -361,6 +371,16 @@ function label(v: unknown): string {
 function num(v: unknown): number | undefined {
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * 4.0.0: a source line is only useful as a positive whole number. Anything
+ * else ("12a", 0, -3, 4.5) is dropped instead of being sent to the editor,
+ * where it would open the wrong place.
+ */
+function lineNo(v: unknown): number | undefined {
+  const n = num(v);
+  return n !== undefined && Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
 function str(v: unknown): string | undefined {

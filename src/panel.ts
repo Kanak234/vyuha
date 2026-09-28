@@ -15,6 +15,9 @@ export type ViewEvent =
   | { kind: 'graph'; view: GraphView; state: GraphState }
   | { kind: 'invalid'; view: GraphView; uri: vscode.Uri; message: string; line?: number }
   | { kind: 'select'; view: GraphView; layer: number; unit: number; label: string }
+  // 4.0.0: a unit was DOUBLE-clicked in a spec's network view -> reveal and
+  // highlight the line that defines its layer (extension.ts revealLayer).
+  | { kind: 'reveal'; view: GraphView; layer: number }
   | { kind: 'decision'; view: GraphView; action: string; confidence: number }
   | { kind: 'activations'; view: GraphView; values: Record<string, number> }
   | { kind: 'export'; view: GraphView; payload: unknown }
@@ -91,6 +94,11 @@ export class GraphView {
         break;
       case 'select':
         this.onEvent({ kind: 'select', view: this, layer: m.layer, unit: m.unit, label: String(m.label ?? '') });
+        break;
+      case 'reveal':
+        // Posted by media/main.js on a double-tap; the layer index is looked up
+        // against this spec's anchors in extension.ts, so a bad index is harmless.
+        if (typeof m.layer === 'number') this.onEvent({ kind: 'reveal', view: this, layer: m.layer });
         break;
       case 'decision':
         this.onEvent({ kind: 'decision', view: this, action: String(m.action ?? ''), confidence: Number(m.confidence) || 0 });

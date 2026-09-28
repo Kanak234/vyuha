@@ -367,7 +367,10 @@ export function autoFrame(cg: CodeGraph, stages: Stage[], st: AutoState): VFrame
       label: n.label,
       state: st.code[n.id] || 'normal',
       note: n.kind + ' · line ' + n.line,
-      group: n.kind
+      group: n.kind,
+      // 4.0.0: each function / loop / branch / print node knows its own line,
+      // so double-tapping it opens exactly that statement.
+      line: n.line > 0 ? n.line : undefined
     });
   }
   for (const e of cg.edges) {

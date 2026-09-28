@@ -1,5 +1,45 @@
 # Changelog
 
+## 4.0.0 — 2026-09-28
+
+Driven by tester feedback: "no bugs found, but give me a size control, and
+highlight the line of code when I double-tap a sphere."
+
+### Added
+- **View dock** with **Zoom** and **Size** sliders (+ / − buttons, live readout),
+  fixed on the left edge so it is visible at every panel width. Before this, zoom
+  was wheel-only and the only sliders were hidden by the 820 px layout rule.
+  Zoom is log-scaled and two-way synced with wheel / pinch / fit / reset.
+  Size 0.4×–2.5× scales spheres, bars (base stays on the floor), halos, arrowheads
+  and label offsets; layout spacing is untouched. Keys `+ - [ ] 0`.
+- **Double-click / double-tap a node → open and highlight its source line.**
+  Whole-line background, left bar and scrollbar mark; clears when you move the
+  cursor or edit. Works in the run view and in `.vyuha.json` network specs.
+- **Per-node source lines** (`VNode.line`). Filled automatically by
+  auto-visualize (each function/loop/branch/print), Debug Visualize (each stack
+  frame and its locals; gdb frames outside your file are ignored) and the
+  Python, JavaScript and Java helpers (the call site in your main file).
+- `vyuha.nodeSize` setting; theme colours `vyuha.sourceLineBackground` and
+  `vyuha.sourceLineBorder` (override them in `workbench.colorCustomizations`).
+- KP watermark: mark in the title panel and on every exported GIF frame.
+
+### Changed
+- **Data-structure view: a single click no longer moves the editor.** It opens the
+  inspector (which now shows the node's line); double-click opens the code. The
+  old jump stole the scroll position while you were only exploring.
+- Invalid `line` values (0, negative, fractions, text) are dropped at the
+  protocol boundary instead of being sent to the editor.
+
+### Not in this release
+- Go, C and C++ helpers do not report lines yet (use Debug Visualize for C/C++).
+- A network emitted by a running program has no source anchors to open.
+
+### Verified
+- `npm run verify`: all six suites pass, including the new `tests/v4-test.js`
+  (dock, sync, size, double-tap, watermark, protocol, auto-visualize, real
+  python3 + gdb Debug Visualize, and real Python / Node / Java helper runs).
+
+
 ## 3.1.1
 
 ### Fixed
