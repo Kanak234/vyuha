@@ -272,7 +272,7 @@ check('an @vyuha line survives the terminal round trip', () => {
   assert.ok(hit, 'the payload line did not come back: ' + JSON.stringify(r.lines));
   const { parseLine } = require('../out/protocol.js');
   const parsed = parseLine(hit);
-  assert.ok(parsed && parsed.payload, 'the payload no longer parses after the terminal');
+  assert.ok(parsed && parsed.payload, 'the payload no longer parses after the terminal: ' + JSON.stringify(hit) + ' → ' + JSON.stringify(parsed) + ' | send=' + r.plan.send);
   assert.strictEqual(parsed.payload.frame.nodes.length, 3);
 });
 

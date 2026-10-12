@@ -86,7 +86,12 @@ ok('an unusable payload is rejected clearly', threw);
 console.log('\n— runner table —');
 
 ok('the built-in table is broad', Object.keys(RUNNERS).length >= 30, Object.keys(RUNNERS).length + ' extensions');
-ok('python maps to python3', (commandFor('/tmp/a.py', {}) || '').startsWith('python3'));
+// 4.1.3: Python command is resolved per machine (py -3 / python / python3), never
+// a blind `python3` — see tests/interpreters-test.js for the Store-stub cases.
+{
+  const pyCmd = commandFor('/tmp/a.py', {}) || '';
+  ok('python maps to a real Python 3 on this machine', /^(py -3|python3?|"?[^"]*python[^"]*"?) -u /.test(pyCmd), pyCmd);
+}
 ok('an unknown extension returns null', commandFor('/tmp/a.qqq', {}) === null);
 ok('a user override wins', commandFor('/tmp/a.py', { py: 'mypython "${file}"' }) === 'mypython "/tmp/a.py"');
 ok('a user entry adds a new language',
