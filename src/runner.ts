@@ -3,6 +3,37 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { parseLine, Payload, VFrame } from './protocol';
+import { resolvePython, resolveCCompiler } from './interpreters';
+
+/*
+ * Machine-specific choices (Python path from settings). extension.ts sets these;
+ * tests can too. Kept here (not read from vscode) so this file stays testable in
+ * plain Node.
+ */
+let pythonSetting = '';
+let pythonExtSetting = '';
+export function setInterpreterSettings(pythonPath: string, pythonExtPath: string) {
+  pythonSetting = pythonPath || '';
+  pythonExtSetting = pythonExtPath || '';
+}
+
+/**
+ * The tool a built-in runner needs is not installed (e.g. Python on a fresh
+ * Windows PC, where `python` is only the Microsoft Store shortcut). Returned
+ * instead of a command, so the caller can show a real explanation and a fix,
+ * rather than a raw "Python was not found" from the shell.
+ */
+export interface MissingTool { missing: 'python' | 'c' | 'cpp'; ext: string }
+
+/** null = language unknown; MissingTool = known language but its tool is absent */
+export function toolCheck(file: string, overrides: Record<string, string>): MissingTool | null {
+  const ext = path.extname(file).replace(/^\./, '').toLowerCase();
+  if (overrides && overrides[ext]) return null;               // user ne apni command di hai
+  if (ext === 'py' || ext === 'py3') return resolvePython(pythonSetting, pythonExtSetting) ? null : { missing: 'python', ext };
+  if (ext === 'c' || ext === 'm') return resolveCCompiler(false) ? null : { missing: 'c', ext };
+  if (['cpp', 'cc', 'cxx'].includes(ext)) return resolveCCompiler(true) ? null : { missing: 'cpp', ext };
+  return null;
+}
 
 /**
  * Built-in run commands, keyed by file extension.
@@ -225,8 +256,20 @@ export function commandFor(file: string, overrides: Record<string, string>): str
   if (overrides && overrides[ext]) {
     return expand(overrides[ext], file);
   }
-  const template = RUNNERS[ext];
+  let template = RUNNERS[ext];
   if (!template) return null;
+
+  // Python: hard-coded `python3` ki jagah is machine ka asli Python 3
+  // (Windows: `py -3` / python.exe; Store stub kabhi nahi).
+  if (ext === 'py' || ext === 'py3') {
+    const py = resolvePython(pythonSetting, pythonExtSetting);
+    if (py) template = template.replace(/^python3\b/, py.display);
+  }
+  // C/C++: `cc` / `c++` Windows (MinGW) par nahi hote — jo compiler mile woh lagao
+  if (['c', 'cpp', 'cc', 'cxx'].includes(ext)) {
+    const cc = resolveCCompiler(ext !== 'c');
+    if (cc) template = template.replace(/^(cc|c\+\+)\b/, cc);
+  }
 
   if (ext === 'go') {
     const dir = path.dirname(file);
@@ -247,7 +290,10 @@ export function expand(template: string, file: string): string {
   const dir = path.dirname(file);
   const base = path.basename(file);
   const noExt = base.replace(/\.[^.]+$/, '');
-  const bin = path.join(os.tmpdir(), 'vyuha-' + noExt.replace(/[^\w.-]/g, '_') + '-' + process.pid);
+  // Windows: compiled program ko `.exe` chahiye (bina extension ke cmd use dhoondh to leta hai,
+  // par antivirus/SmartScreen extension-less binaries ko block kar dete hain)
+  const bin = path.join(os.tmpdir(), 'vyuha-' + noExt.replace(/[^\w.-]/g, '_') + '-' + process.pid) +
+    (process.platform === 'win32' ? '.exe' : '');
   return template
     .replace(/\$\{file\}/g, file)
     .replace(/\$\{dir\}/g, dir)
@@ -327,13 +373,20 @@ export function planTerminalRun(command: string, cwd: string, stdinFile?: string
 
   if (win) {
     const script = path.join(dir, id + '.cmd');
+    /*
+     * stderr ko cmd ke ANDAR hi stdout mein milao (`2>&1` script mein). Pehle yeh
+     * PowerShell ki line par tha — Windows PowerShell 5.1 native program ke har
+     * stderr line ko "NativeCommandError" record bana kar laal kachre ke saath
+     * dikhata hai (Rahul ke screen par yahi aaya tha). Terminal hamesha PowerShell
+     * mein khulta hai (extension.ts shellPath), isliye Tee-Object hamesha milta hai.
+     */
     fs.writeFileSync(script,
       '@echo off\r\n' +
       'cd /d ' + q(cwd, true) + '\r\n' +
-      'call ' + command + redirect + '\r\n' +
+      'call ' + command + redirect + ' 2>&1\r\n' +
       'echo ' + EXIT_SENTINEL + ' %ERRORLEVEL%\r\n', 'utf8');
     return {
-      send: 'cmd /c ' + q(script, true) + ' 2>&1 | Tee-Object -FilePath ' + q(logPath, true),
+      send: '& cmd /c ' + q(script, true) + ' | Tee-Object -FilePath ' + q(logPath, true),
       logPath,
       cleanup: [script, logPath]
     };
@@ -390,6 +443,14 @@ function shq(s: string): string {
 export class LogTail {
   private pos = 0;
   private buf = '';
+  /*
+   * Windows PowerShell 5.1 ka Tee-Object file ko UTF-16LE (BOM FF FE) mein likhta
+   * hai. Use UTF-8 maan kar padhne se har character ke beech NUL aata tha, exit
+   * sentinel kabhi match nahi hota tha aur run "chalta hi rehta" tha. Pehle bytes
+   * dekh kar encoding tay karte hain.
+   */
+  private enc: BufferEncoding | undefined;
+  private carry: Buffer = Buffer.alloc(0);
   private timer: NodeJS.Timeout | undefined;
   private stopped = false;
 
@@ -420,18 +481,32 @@ export class LogTail {
     if (this.stopped) return;
     let size: number;
     try { size = fs.statSync(this.file).size; } catch { return; }
-    if (size < this.pos) { this.pos = 0; this.buf = ''; }
+    if (size < this.pos) { this.pos = 0; this.buf = ''; this.enc = undefined; this.carry = Buffer.alloc(0); }
     if (size === this.pos) return;
 
     let chunk = '';
     try {
       const fd = fs.openSync(this.file, 'r');
       const len = size - this.pos;
-      const b = Buffer.alloc(len);
+      let b = Buffer.alloc(len);
       fs.readSync(fd, b, 0, len, this.pos);
       fs.closeSync(fd);
-      chunk = b.toString('utf8');
       this.pos = size;
+      if (!this.enc) {
+        if (b.length >= 2 && b[0] === 0xff && b[1] === 0xfe) { this.enc = 'utf16le'; b = b.subarray(2); }
+        else if (b.length >= 3 && b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf) { this.enc = 'utf8'; b = b.subarray(3); }
+        else if (b.length >= 2 && b[1] === 0x00 && b[0] !== 0x00) this.enc = 'utf16le';   // BOM-less UTF-16
+        else this.enc = 'utf8';
+      }
+      b = Buffer.concat([this.carry, b]);
+      // UTF-16 mein 2 byte ka character — aadha character agle poll ke liye rakho;
+      // UTF-8 mein multi-byte character beech mein toota ho to use bhi rakho.
+      let cut = b.length;
+      if (this.enc === 'utf16le') cut -= cut % 2;
+      else { let k = b.length - 1, back = 0; while (k >= 0 && back < 4 && (b[k] & 0xc0) === 0x80) { k--; back++; }
+             if (k >= 0 && b[k] >= 0xc0) { const need = b[k] >= 0xf0 ? 4 : b[k] >= 0xe0 ? 3 : 2; if (back + 1 < need) cut = k; } }
+      this.carry = b.subarray(cut);
+      chunk = b.subarray(0, cut).toString(this.enc);
     } catch { return; }
 
     this.buf += chunk;

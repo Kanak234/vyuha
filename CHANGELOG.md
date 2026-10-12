@@ -1,5 +1,42 @@
 # Changelog
 
+## 3.1.2 — 2026-10-12
+
+### Fixed — Windows
+
+- **"Python was not found; run without arguments to install from the Microsoft
+  Store".** VYUHA always ran `python3`, which on Windows usually does not exist —
+  or is only the Microsoft Store shortcut that prints that message and exits.
+  VYUHA now finds a *real* Python 3 by running it: `vyuha.pythonPath` (new
+  setting) → the Python extension's chosen interpreter → `py -3` (the official
+  Windows launcher) → `python` → `python3`. The Store shortcut never prints
+  "Python 3.x", so it is never picked. Same for the debugger and the compiler view.
+- **No Python at all → a clear message, not a red shell error.** VYUHA checks
+  before running and offers Download Python, a one-command install (`winget`),
+  or setting the path.
+- **C/C++ on Windows:** the runner used `cc` / `c++`, which MinGW does not have;
+  it now uses whichever of `gcc`/`clang`/`cc` (or `g++`/`clang++`/`c++`) works.
+  Compiled programs get a `.exe` name.
+- **Red `NativeCommandError` noise in the terminal.** stderr was redirected on
+  the PowerShell line, which Windows PowerShell 5.1 turns into error records.
+  The redirect now happens inside `cmd`, and the run terminal always opens in
+  PowerShell (it uses `Tee-Object`), whatever the user's default shell is.
+- **Runs never finished on Windows.** Windows PowerShell 5.1's `Tee-Object`
+  writes UTF-16; the log reader assumed UTF-8, so the exit marker was never
+  seen. The reader now detects UTF-16 / UTF-8 (and characters split across reads).
+
+### Verified
+
+- New `tests/interpreters-test.js`: fake Store stubs on PATH are rejected; with
+  only the stub VYUHA reports Python missing; `vyuha.pythonPath` wins and really
+  runs a program; `py -3` is tried first on Windows; UTF-16LE and UTF-8 logs
+  (written 3 bytes at a time) are read correctly with the exit code.
+- New `tests/extension-test.js`: on a PC with only the Store stub, Run shows the
+  fix instead of starting the broken command.
+- Existing suite still passes (render, DS, runner, auto, compiler tests).
+- CI now runs on Windows, Linux and macOS.
+
+
 ## 3.1.1
 
 ### Fixed

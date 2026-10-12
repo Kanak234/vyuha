@@ -21,6 +21,7 @@
  * drawn element by element so you can watch them fill and sort.
  */
 
+import { resolvePython, pythonInstallHint } from './interpreters';
 import { execFile, execFileSync, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -36,6 +37,15 @@ export interface DebugResult {
   frames: number;
   summary: string;
   exitCode: number | null;
+}
+
+/** vyuha.pythonPath setting (vscode yahan optional hai — Node tests mein nahi hota) */
+function pythonPathSetting(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const vs = require('vscode');
+    return vs.workspace.getConfiguration('vyuha').get('pythonPath', '') || '';
+  } catch { return ''; }
 }
 
 function which(cmd: string): string {
@@ -226,16 +236,18 @@ function fmtVal(v: any): string {
 function runPythonDebug(file: string, timeoutMs: number, emit: DebugEmit,
                         log: (s: string) => void): Promise<DebugResult> {
   return new Promise(resolve => {
-    const py = which('python3') ? 'python3' : (which('python') ? 'python' : '');
-    if (!py) {
+    // Asli Python 3 (Windows par `py -3`; Store stub kabhi nahi) — interpreters.ts
+    const found = resolvePython(pythonPathSetting());
+    if (!found) {
       resolve({ ok: false, language: 'Python', tool: 'none', frames: 0, exitCode: null,
-        summary: 'No Python interpreter found. Install Python 3.' });
+        summary: pythonInstallHint().text });
       return;
     }
+    const py = found.cmd;
     const tracerPath = path.join(os.tmpdir(), 'vyuha_tracer_' + process.pid + '.py');
     fs.writeFileSync(tracerPath, PY_TRACER, 'utf8');
 
-    const child = spawn(py, ['-u', tracerPath, file], {
+    const child = spawn(py, [...found.args, '-u', tracerPath, file], {
       cwd: path.dirname(file),
       env: { ...process.env, VYUHA_MAX_STEPS: '4000' }
     });

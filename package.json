@@ -2,7 +2,7 @@
   "name": "vyuha",
   "displayName": "VYUHA",
   "description": "Run your code in any language and watch it draw itself in 3D — every program, even one that prints only hello world.",
-  "version": "3.1.1",
+  "version": "3.1.2",
   "publisher": "KANAKPRABHAKAR",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -523,6 +523,11 @@
           "type": "string",
           "default": "",
           "description": "HTTP endpoint returning a live activation trace, e.g. http://127.0.0.1:8000/trace. Leave empty to run the forward pass locally."
+        },
+        "vyuha.pythonPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Python 3 used to run `.py` files and the debugger. Leave empty to auto-detect: the Python extension's interpreter, then `py -3` / `python` on Windows or `python3` / `python` elsewhere. The Microsoft Store shortcut is never used."
         }
       }
     }
@@ -533,7 +538,7 @@
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run vendor && npm run compile",
     "package": "vsce package",
-    "test": "node tests/render-smoke.js && node tests/ds-smoke.js && node tests/runner-test.js && node tests/auto-test.js && node tests/compiler-test.js",
+    "test": "node tests/render-smoke.js && node tests/ds-smoke.js && node tests/runner-test.js && node tests/auto-test.js && node tests/compiler-test.js && node tests/interpreters-test.js",
     "verify": "npm run vendor && npm run compile && npm test",
     "build": "npm run compile"
   },

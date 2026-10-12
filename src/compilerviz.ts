@@ -22,6 +22,7 @@
  * note in the picture, not a crash.
  */
 
+import { resolvePython } from './interpreters';
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -192,7 +193,7 @@ function pushState(ctx: Ctx, title: string, note: string, stages: StageReport[],
 }
 
 async function cFamily(ctx: Ctx, isCpp: boolean): Promise<PipelineReport> {
-  const tool = await detectTool(isCpp ? ['g++', 'clang++', 'c++'] : ['gcc', 'clang', 'cc']);
+  const tool = await detectTool(isCpp ? ['g++', 'clang++', 'c++'] : ['gcc', 'clang', 'cc']);   // already Windows-first order
   const lang = isCpp ? 'C++' : 'C';
   if (!tool) {
     const s = [stage('missing', 'No ' + lang + ' compiler found')];
@@ -351,8 +352,10 @@ async function javaPipeline(ctx: Ctx): Promise<PipelineReport> {
 }
 
 async function pythonPipeline(ctx: Ctx): Promise<PipelineReport> {
-  const py = await detectTool(['python3', 'python']);
-  if (!py) return missing(ctx, 'Python', 'Install Python 3');
+  // Asli Python 3 (Windows: `py -3`; Store stub kabhi nahi) — interpreters.ts
+  const found = resolvePython();
+  if (!found) return missing(ctx, 'Python', 'Install Python 3');
+  const py = { cmd: found.cmd, path: found.cmd, version: found.version, pre: found.args };
   const title = py.cmd + ' — Python pipeline';
   const S = [stage('src', 'Source'), stage('parse', 'Parse + Compile'), stage('bytecode', 'Bytecode'), stage('run', 'Run (interpreter)')];
   const [sSrc, sParse, sByte, sRun] = S;
@@ -361,7 +364,7 @@ async function pythonPipeline(ctx: Ctx): Promise<PipelineReport> {
   sParse.state = 'active';
   pushState(ctx, title, 'compiling to bytecode', S);
 
-  let r = await run(py.cmd, ['-c',
+  let r = await run(py.cmd, [...py.pre, '-c',
     'import py_compile,sys; py_compile.compile(sys.argv[1], doraise=True); print("ok")', ctx.file], ctx.dir, ctx.timeout);
   sParse.ms = r.ms;
   if (!r.ok) {
@@ -373,7 +376,7 @@ async function pythonPipeline(ctx: Ctx): Promise<PipelineReport> {
   sByte.state = 'active';
   pushState(ctx, title, 'counting bytecode', S);
 
-  r = await run(py.cmd, ['-c', [
+  r = await run(py.cmd, [...py.pre, '-c', [
     'import dis,sys,marshal',
     'src=open(sys.argv[1],encoding="utf-8",errors="replace").read()',
     'code=compile(src, sys.argv[1], "exec")',
@@ -395,7 +398,7 @@ async function pythonPipeline(ctx: Ctx): Promise<PipelineReport> {
   sRun.state = 'active';
   pushState(ctx, title, 'running', S, det);
 
-  r = await run(py.cmd, ['-u', ctx.file], ctx.dir, ctx.timeout, '');
+  r = await run(py.cmd, [...py.pre, '-u', ctx.file], ctx.dir, ctx.timeout, '');
   sRun.ms = r.ms;
   sRun.state = r.ok ? 'done' : 'error';
   sRun.facts = ['exit code ' + r.code];
