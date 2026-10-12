@@ -228,7 +228,9 @@ function runPlanned(command, cwd, stdinFile) {
   const tail = new LogTail(plan.logPath, l => lines.push(l), c => { exitCode = c; }, 30);
   tail.start();
   try {
-    execFileSync('/bin/bash', ['-lc', plan.send], { stdio: 'ignore', timeout: 30000 });
+    // Same shell the extension uses: PowerShell on Windows (Tee-Object, cmd /c), bash elsewhere
+    if (process.platform === 'win32') execFileSync('powershell.exe', ['-NoLogo', '-NoProfile', '-Command', plan.send], { stdio: 'ignore', timeout: 60000 });
+    else execFileSync('/bin/bash', ['-lc', plan.send], { stdio: 'ignore', timeout: 30000 });
   } catch (err) {
     // A non-zero exit from the program itself is expected in one of the cases.
   }
@@ -245,7 +247,8 @@ check('a plain echo is captured with its exit code', () => {
 });
 
 check('a failing command reports its real exit code', () => {
-  const r = runPlanned('exit 3', tmp);
+  // cmd.exe mein `call exit 3` script ko hi band kar deta; `cmd /c exit 3` sirf child ko
+  const r = runPlanned(process.platform === 'win32' ? 'cmd /c exit 3' : 'exit 3', tmp);
   assert.strictEqual(r.exitCode, 3);
 });
 
@@ -253,9 +256,9 @@ check('a C++ program that reads stdin does not hang', () => {
   const src = write('sum.cpp', `#include <iostream>
 int main(){ int a,b; std::cin >> a >> b; std::cout << "sum " << (a+b) << std::endl; return 0; }
 `);
-  const bin = path.join(tmp, 'sum');
+  const bin = path.join(tmp, 'sum' + (process.platform === 'win32' ? '.exe' : ''));
   try {
-    execFileSync('c++', ['-std=c++17', src, '-o', bin], { stdio: 'ignore' });
+    execFileSync(process.platform === 'win32' ? 'g++' : 'c++', ['-std=c++17', src, '-o', bin], { stdio: 'ignore' });
   } catch {
     console.log('       (no C++ compiler here — skipped)');
     return;
@@ -267,7 +270,9 @@ int main(){ int a,b; std::cin >> a >> b; std::cout << "sum " << (a+b) << std::en
 });
 
 check('an @vyuha line survives the terminal round trip', () => {
-  const r = runPlanned(`printf '@vyuha {"array":[3,1,2],"active":[0]}\\n'`, tmp);
+  const r = runPlanned(process.platform === 'win32'
+    ? 'echo @vyuha {"array":[3,1,2],"active":[0]}'
+    : `printf '@vyuha {"array":[3,1,2],"active":[0]}\\n'`, tmp);
   const hit = r.lines.map(stripAnsi).find(l => l.includes('@vyuha'));
   assert.ok(hit, 'the payload line did not come back: ' + JSON.stringify(r.lines));
   const { parseLine } = require('../out/protocol.js');
@@ -278,6 +283,9 @@ check('an @vyuha line survives the terminal round trip', () => {
 
 check('colour codes are stripped out of the log', () => {
   assert.strictEqual(stripAnsi('\u001b[32mgreen\u001b[0m'), 'green');
+  // macOS `script` EOF echo in front of the first line
+  assert.strictEqual(stripAnsi('^D\b\b@vyuha {"array":[1]}'), '@vyuha {"array":[1]}');
+  assert.strictEqual(stripAnsi('ab\bc'), 'ac');
   assert.strictEqual(stripAnsi('over\rwrite'), 'overwrite');
 });
 

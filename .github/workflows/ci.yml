@@ -1,7 +1,7 @@
 # CI — VYUHA har push par Windows, Linux aur macOS teeno par test hota hai.
 #  - interpreters-test: Microsoft Store "python" stub reject, py -3, pythonPath, UTF-16 terminal log
 #  - extension-test:    "Python missing" par saaf message (Rahul ke laptop wala bug)
-#  - poora purana suite: Linux par strict; Windows/macOS par report (pehle sirf Linux par chalta tha)
+#  - poora suite: Windows, Linux aur macOS teeno par strict
 name: CI
 
 on:
@@ -58,7 +58,6 @@ jobs:
         run: node tests/extension-test.js
 
       - name: Full suite
-        continue-on-error: ${{ runner.os != 'Linux' }}
         shell: bash
         # Fail hone par aakhri 60 lines annotation mein (log bina login ke padhne ke liye)
         run: |

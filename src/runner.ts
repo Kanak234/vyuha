@@ -380,7 +380,16 @@ const ANSI = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-
 
 /** Terminal logs carry cursor moves and colour codes; frames do not want them. */
 export function stripAnsi(s: string): string {
-  return s.replace(ANSI, '').replace(/\r(?!\n)/g, '');
+  let t = s.replace(ANSI, '').replace(/\r(?!\n)/g, '');
+  /*
+   * macOS `script` writes "^D" + two backspaces when the program's stdin ends
+   * (it echoes the EOF it sends). That landed at the START of the program's first
+   * output line, so a first `@vyuha` frame no longer parsed and was lost.
+   * Remove the echo, then apply any backspaces the way a terminal would.
+   */
+  t = t.replace(/\^D\x08\x08/g, '');
+  while (/[^\x08]\x08/.test(t)) t = t.replace(/[^\x08]\x08/g, '');
+  return t.replace(/\x08/g, '');
 }
 
 export interface TerminalPlan {

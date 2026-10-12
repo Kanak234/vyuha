@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.1.4 — 2026-10-12
+
+### Fixed
+
+- **macOS: the first line of program output was corrupted in the terminal run.**
+  macOS's `script` writes an EOF echo (`^D` plus two backspaces) in front of the
+  program's first output line, so a first `@vyuha` frame no longer parsed and was
+  dropped. The log reader now removes that echo and applies backspaces like a
+  terminal does.
+
+### Tests / CI
+
+- The full test suite now runs strictly on **Windows, Linux and macOS** (it was
+  Linux-only). The terminal tests run through the same shell the extension uses
+  (PowerShell + `Tee-Object` on Windows), which also exercises the 4.1.3 UTF-16
+  log fix for real.
+
+
 ## 4.1.3 — 2026-10-12
 
 ### Fixed — Windows
