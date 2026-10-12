@@ -48,6 +48,18 @@ function pythonPathSetting(): string {
   } catch { return ''; }
 }
 
+/** OS se ek khaali TCP port lo (sync — extension host Electron ko Node ki tarah chala kar) */
+function freePort(): number {
+  try {
+    const out = execFileSync(process.execPath, ['-e',
+      "const s=require('net').createServer();s.listen(0,'127.0.0.1',()=>{process.stdout.write(String(s.address().port));s.close();})"],
+      { encoding: 'utf8', timeout: 5000, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
+    const n = Number(out.trim());
+    if (n > 0) return n;
+  } catch { /* fallback neeche */ }
+  return 20000 + Math.floor(Math.random() * 30000);
+}
+
 function which(cmd: string): string {
   try {
     const probe = process.platform === 'win32' ? 'where' : 'which';
@@ -580,8 +592,15 @@ function driveJdb(jdb: string, work: string, cls: string, userBase: string, cwd:
   // free port chosen by the OS) and jdb ATTACHES to it. Program output then
   // arrives cleanly on the java process's stdout and goes to the log.
   const java = which('java') || 'java';
+  /*
+   * Port PEHLE se chuno (address=…:0 nahi). Pehle hum JVM ke stdout par
+   * "Listening for transport dt_socket at address: PORT" ka intezaar karte the —
+   * Windows par pipe wala stdout buffer ho jaata hai, woh line kabhi nahi aati,
+   * JVM suspend=y par ruka rehta aur Java Debug Visualize ek bhi step nahi deta.
+   */
+  const port = freePort();
   const vm = spawn(java, [
-    '-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=127.0.0.1:0',
+    '-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=127.0.0.1:' + port,
     '-cp', work, cls
   ], { cwd });
 
@@ -604,7 +623,8 @@ function driveJdb(jdb: string, work: string, cls: string, userBase: string, cwd:
   };
   const timer = setTimeout(() => finish(null, 'Stopped at the time limit.'), Math.max(timeoutMs, 20000));
   vm.on('error', err => finish(null, 'Could not start java: ' + err.message));
-  vm.on('exit', code => { exited = true; if (waiterFlush) waiterFlush(); if (!dbg) finish(code); });
+  let vmExited = false;
+  vm.on('exit', code => { vmExited = true; exited = true; if (waiterFlush) waiterFlush(); if (!dbg) finish(code); });
 
   let waiterFlush: (() => void) | null = null;
   let vmOut = '';
@@ -615,13 +635,17 @@ function driveJdb(jdb: string, work: string, cls: string, userBase: string, cwd:
     while ((nl = vmOut.indexOf('\n')) !== -1) {
       const line = vmOut.slice(0, nl).replace(/\r$/, ''); vmOut = vmOut.slice(nl + 1);
       const pm = /Listening for transport dt_socket at address: (?:[\d.]+:)?(\d+)/.exec(line);
-      if (pm && !attached) { attached = true; attach(pm[1]); continue; }
+      if (pm) { if (!attached) { attached = true; attach(String(port)); } continue; }
       if (line.trim()) log(line);                  // the program's own output
     }
   });
   vm.stderr!.on('data', d => log(d.toString().trimEnd()));
+  // "Listening…" line na aaye (Windows) to bhi thodi der baad attach karo
+  setTimeout(() => { if (!attached && !finished) { attached = true; attach(String(port)); } }, 1200);
 
+  let attachTries = 0;
   function attach(port: string) {
+    attachTries++;
     const child = spawn(jdb, ['-attach', '127.0.0.1:' + port], { cwd });
     dbg = child;
     let buf = '';
@@ -648,7 +672,13 @@ function driveJdb(jdb: string, work: string, cls: string, userBase: string, cwd:
     // us "\r" par fail hota tha aur Windows par ek bhi step nahi milta tha.
     child.stdout!.on('data', d => { buf += d.toString().replace(/\r/g, ''); flush(); });
     child.stderr!.on('data', d => { buf += d.toString().replace(/\r/g, ''); flush(); });
-    child.on('exit', () => { exited = true; flush(); finish(0); });
+    let sawPrompt = false;
+    child.stdout!.on('data', () => { if (THREAD_PROMPT.test(buf) || /> $/.test(buf)) sawPrompt = true; });
+    child.on('exit', () => {
+      // JVM abhi port par sun nahi raha tha ("Unable to attach") — thoda ruk kar dobara
+      if (!sawPrompt && !finished && attachTries < 10 && !vmExited) { buf = ''; setTimeout(() => attach(port), 400); return; }
+      exited = true; flush(); finish(0);
+    });
     child.on('error', err => finish(null, 'Could not start jdb: ' + err.message));
 
     const ask = (cmd: string | null, until: RegExp = THREAD_PROMPT) => new Promise<string>(res => {

@@ -10,10 +10,12 @@
   dropped. The log reader now removes that echo and applies backspaces like a
   terminal does.
 
-- **Windows: Java Debug Visualize traced nothing.** jdb on Windows ends lines
-  with `\r\n`; the prompt/step parsers expected `\n`, so not a single step was
-  recognised ("jdb produced no steps"). jdb and program output are normalised
-  first.
+- **Windows: Java Debug Visualize traced nothing** ("jdb produced no steps").
+  VYUHA waited for the JVM to print "Listening for transport … at address: PORT"
+  before attaching jdb; on Windows that line sits in a pipe buffer and never
+  arrives, so the JVM stayed suspended forever. The debug port is now chosen up
+  front, jdb attaches after a short wait (retrying while the JVM starts), and
+  jdb's `\r\n` output is normalised.
 
 ### Tests / CI
 
