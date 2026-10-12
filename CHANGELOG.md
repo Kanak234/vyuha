@@ -10,6 +10,11 @@
   dropped. The log reader now removes that echo and applies backspaces like a
   terminal does.
 
+- **Windows: Java Debug Visualize traced nothing.** jdb on Windows ends lines
+  with `\r\n`; the prompt/step parsers expected `\n`, so not a single step was
+  recognised ("jdb produced no steps"). jdb and program output are normalised
+  first.
+
 ### Tests / CI
 
 - The full test suite now runs strictly on **Windows, Linux and macOS** (it was

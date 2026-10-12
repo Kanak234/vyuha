@@ -613,7 +613,7 @@ function driveJdb(jdb: string, work: string, cls: string, userBase: string, cwd:
     vmOut += d.toString();
     let nl;
     while ((nl = vmOut.indexOf('\n')) !== -1) {
-      const line = vmOut.slice(0, nl); vmOut = vmOut.slice(nl + 1);
+      const line = vmOut.slice(0, nl).replace(/\r$/, ''); vmOut = vmOut.slice(nl + 1);
       const pm = /Listening for transport dt_socket at address: (?:[\d.]+:)?(\d+)/.exec(line);
       if (pm && !attached) { attached = true; attach(pm[1]); continue; }
       if (line.trim()) log(line);                  // the program's own output
@@ -644,8 +644,10 @@ function driveJdb(jdb: string, work: string, cls: string, userBase: string, cwd:
       }
     };
     waiterFlush = flush;
-    child.stdout!.on('data', d => { buf += d.toString(); flush(); });
-    child.stderr!.on('data', d => { buf += d.toString(); flush(); });
+    // Windows ka jdb har line "\r\n" se khatam karta hai; parse regexes ka `$`
+    // us "\r" par fail hota tha aur Windows par ek bhi step nahi milta tha.
+    child.stdout!.on('data', d => { buf += d.toString().replace(/\r/g, ''); flush(); });
+    child.stderr!.on('data', d => { buf += d.toString().replace(/\r/g, ''); flush(); });
     child.on('exit', () => { exited = true; flush(); finish(0); });
     child.on('error', err => finish(null, 'Could not start jdb: ' + err.message));
 
