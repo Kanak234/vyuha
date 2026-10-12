@@ -647,7 +647,12 @@ function driveJdb(jdb: string, work: string, cls: string, userBase: string, cwd:
   let attachTries = 0;
   function attach(port: string) {
     attachTries++;
-    const child = spawn(jdb, ['-attach', '127.0.0.1:' + port], { cwd });
+    /*
+     * `-attach host:port` Windows par shared-memory connector (dt_shmem) chunta hai
+     * aur "127.0.0.1:PORT" ko shmem ka NAAM samajh leta hai — jdb chup-chaap band.
+     * Socket connector ko naam se maango: Windows, Linux, macOS teeno par same.
+     */
+    const child = spawn(jdb, ['-connect', 'com.sun.jdi.SocketAttach:hostname=127.0.0.1,port=' + port], { cwd });
     dbg = child;
     let buf = '';
     let waiter: { until: RegExp; res: (text: string) => void } | null = null;
@@ -672,9 +677,9 @@ function driveJdb(jdb: string, work: string, cls: string, userBase: string, cwd:
     // Windows ka jdb har line "\r\n" se khatam karta hai; parse regexes ka `$`
     // us "\r" par fail hota tha aur Windows par ek bhi step nahi milta tha.
     const trace = process.env.VYUHA_DEBUG_JDB === '1';
-    if (trace) log('[jdb] attach try ' + attachTries + ' → 127.0.0.1:' + port + ' using ' + jdb);
+    if (trace) log('[jdb] attach try ' + attachTries + ' → socket 127.0.0.1:' + port + ' using ' + jdb);
     child.stdout!.on('data', d => { if (trace) log('[jdb<] ' + JSON.stringify(d.toString()).slice(0, 300)); buf += d.toString().replace(/\r/g, ''); flush(); });
-    child.stderr!.on('data', d => { buf += d.toString().replace(/\r/g, ''); flush(); });
+    child.stderr!.on('data', d => { if (trace) log('[jdb!] ' + JSON.stringify(d.toString()).slice(0, 300)); buf += d.toString().replace(/\r/g, ''); flush(); });
     let sawPrompt = false;
     child.stdout!.on('data', () => { if (THREAD_PROMPT.test(buf) || /> $/.test(buf)) sawPrompt = true; });
     child.on('exit', () => {

@@ -15,7 +15,11 @@
   before attaching jdb; on Windows that line sits in a pipe buffer and never
   arrives, so the JVM stayed suspended forever. The debug port is now chosen up
   front, jdb attaches after a short wait (retrying while the JVM starts), and
-  jdb's `\r\n` output is normalised.
+  jdb's `\r\n` output is normalised. Root cause found from a jdb transcript in
+  CI: on Windows `jdb -attach host:port` picks the shared-memory connector and
+  treats "127.0.0.1:PORT" as a shared-memory name, so it exits silently. VYUHA
+  now asks for the socket connector explicitly
+  (`-connect com.sun.jdi.SocketAttach:hostname=…,port=…`) on every OS.
 
 ### Tests / CI
 
