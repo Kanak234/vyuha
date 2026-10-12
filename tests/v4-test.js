@@ -424,7 +424,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vyuha-v4-'));
       '}'].join('\n'));
     const frames = []; const logs = [];
     const res = await debugVisualize(f, 30000, fr => frames.push(fr), s => logs.push(s));
-    ok('java debug: traced without print calls', res.ok && res.frames > 5, res.summary);
+    ok('java debug: traced without print calls', res.ok && res.frames > 5, res.summary + (res.ok ? '' : ' | log: ' + JSON.stringify(logs.slice(-25))));
     const depth = fr => fr.nodes.filter(n => n.group === 'stack').length;
     ok('java debug: recursion depth reaches 4 frames (main + fact x3)', Math.max(...frames.map(depth)) === 4);
     ok('java debug: call stack shrinks back to main', frames.length > 0 && depth(frames[frames.length - 1]) === 1);

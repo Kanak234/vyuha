@@ -62,7 +62,7 @@ jobs:
         # Fail hone par aakhri 60 lines annotation mein (log bina login ke padhne ke liye)
         run: |
           set -o pipefail
-          if ! npm test 2>&1 | tee suite.log; then
+          if ! VYUHA_DEBUG_JDB=1 npm test 2>&1 | tee suite.log; then
             grep -n "FAIL\|Error\|error" suite.log | head -40 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' > t1.txt
             tail -25 suite.log | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' > t2.txt
             echo "::error title=suite failures::$(cat t1.txt)"

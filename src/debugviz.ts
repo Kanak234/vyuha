@@ -640,6 +640,7 @@ function driveJdb(jdb: string, work: string, cls: string, userBase: string, cwd:
     }
   });
   vm.stderr!.on('data', d => log(d.toString().trimEnd()));
+  if (process.env.VYUHA_DEBUG_JDB === '1') log('[vm] ' + java + ' port ' + port + ' cls ' + cls + ' work ' + work);
   // "Listening…" line na aaye (Windows) to bhi thodi der baad attach karo
   setTimeout(() => { if (!attached && !finished) { attached = true; attach(String(port)); } }, 1200);
 
@@ -670,7 +671,9 @@ function driveJdb(jdb: string, work: string, cls: string, userBase: string, cwd:
     waiterFlush = flush;
     // Windows ka jdb har line "\r\n" se khatam karta hai; parse regexes ka `$`
     // us "\r" par fail hota tha aur Windows par ek bhi step nahi milta tha.
-    child.stdout!.on('data', d => { buf += d.toString().replace(/\r/g, ''); flush(); });
+    const trace = process.env.VYUHA_DEBUG_JDB === '1';
+    if (trace) log('[jdb] attach try ' + attachTries + ' → 127.0.0.1:' + port + ' using ' + jdb);
+    child.stdout!.on('data', d => { if (trace) log('[jdb<] ' + JSON.stringify(d.toString()).slice(0, 300)); buf += d.toString().replace(/\r/g, ''); flush(); });
     child.stderr!.on('data', d => { buf += d.toString().replace(/\r/g, ''); flush(); });
     let sawPrompt = false;
     child.stdout!.on('data', () => { if (THREAD_PROMPT.test(buf) || /> $/.test(buf)) sawPrompt = true; });
