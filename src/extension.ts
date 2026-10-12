@@ -7,7 +7,8 @@ import { GraphEditorProvider, GraphView, ViewEvent } from './panel';
 import { RunView, RunEvent } from './runview';
 import { layerAtLine, templateSpec } from './spec';
 import { LayerTree } from './tree';
-import { RunSession, commandFor, knownExtensions, stdinFileFor, planTerminalRun, LogTail } from './runner';
+import { RunSession, commandFor, knownExtensions, stdinFileFor, planTerminalRun, LogTail, setInterpreterSettings, toolCheck, MissingTool } from './runner';
+import { clearInterpreterCache, pythonInstallHint } from './interpreters';
 import { Payload, VFrame, parseLine } from './protocol';
 import { analyzeSource, stagesFor, autoFrame, initialState, AutoState, CodeGraph, Stage } from './codegraph';
 import { visualizeCompilation, PipelineReport } from './compilerviz';
@@ -93,6 +94,7 @@ export function activate(context: vscode.ExtensionContext) {
     }, 220)),
 
     vscode.workspace.onDidChangeConfiguration(e => {
+      if (e.affectsConfiguration('vyuha') || e.affectsConfiguration('python')) { clearInterpreterCache(); syncInterpreterSettings(); }
       if (e.affectsConfiguration('vyuha')) {
         views.forEach(v => v.pushConfig());
         if (runView) runView.pushConfig();
@@ -117,6 +119,40 @@ export function deactivate() {
 }
 
 /** Runner settings, read fresh on each run so edits take effect at once. */
+/** Python path settings → runner (runner.ts vscode import nahi karta, testable rehta hai) */
+function syncInterpreterSettings() {
+  const v = vscode.workspace.getConfiguration('vyuha').get<string>('pythonPath', '') || '';
+  const p = vscode.workspace.getConfiguration('python').get<string>('defaultInterpreterPath', '') || '';
+  setInterpreterSettings(v, p);
+}
+
+/**
+ * Language jaana-pehchana hai par uska tool machine par nahi (Rahul ke laptop par
+ * Python sirf Store ka shortcut tha). Raw shell error ki jagah saaf message + fix.
+ */
+async function explainMissingTool(m: MissingTool) {
+  if (m.missing === 'python') {
+    const h = pythonInstallHint();
+    const buttons = ['Download Python', ...(h.command ? ['Install with one command'] : []), 'I have Python — set path'];
+    const pick = await vscode.window.showErrorMessage('VYUHA: ' + h.text, ...buttons);
+    if (pick === 'Download Python') void vscode.env.openExternal(vscode.Uri.parse(h.url));
+    else if (pick === 'Install with one command' && h.command) {
+      const t = vscode.window.createTerminal({ name: 'VYUHA · install Python' });
+      t.show(); t.sendText(h.command);
+      void vscode.window.showInformationMessage('VYUHA: after the install finishes, close and reopen VS Code so the new PATH is picked up.');
+    } else if (pick === 'I have Python — set path') {
+      void vscode.commands.executeCommand('workbench.action.openSettings', 'vyuha.pythonPath');
+    }
+    return;
+  }
+  const need = m.missing === 'cpp' ? 'a C++ compiler (g++ / clang++)' : 'a C compiler (gcc / clang)';
+  const cmd = process.platform === 'win32' ? 'winget install -e --id BrechtSanders.WinLibs.POSIX.UCRT' :
+    process.platform === 'darwin' ? 'xcode-select --install' : 'sudo apt-get install -y build-essential';
+  const pick = await vscode.window.showErrorMessage('VYUHA: running .' + m.ext + ' files needs ' + need + ', and none was found.', 'Install with one command', 'Use my own command');
+  if (pick === 'Install with one command') { const t = vscode.window.createTerminal({ name: 'VYUHA · install compiler' }); t.show(); t.sendText(cmd); }
+  else if (pick === 'Use my own command') void vscode.commands.executeCommand('workbench.action.openSettings', 'vyuha.runners');
+}
+
 function readRunConfig() {
   const c = vscode.workspace.getConfiguration('vyuha');
   return {
@@ -183,6 +219,9 @@ async function runAndVisualize(target?: vscode.Uri) {
 
   const cfg = readRunConfig();
   const file = uri.fsPath;
+  syncInterpreterSettings();
+  const missing = toolCheck(file, cfg.runners);
+  if (missing) { await explainMissingTool(missing); return; }
   const command = commandFor(file, cfg.runners);
   if (!command) {
     await offerRunner(file, cfg.runners);
@@ -268,7 +307,12 @@ function startInTerminal(ctx: RunCtx, inputFile?: string) {
   cleanupFiles = plan.cleanup;
 
   terminal = vscode.window.terminals.find(t => t.name === TERMINAL_NAME && !t.exitStatus)
-    || vscode.window.createTerminal({ name: TERMINAL_NAME, cwd: ctx.cwd });
+    || vscode.window.createTerminal({
+      name: TERMINAL_NAME, cwd: ctx.cwd,
+      // Windows: run line PowerShell syntax (Tee-Object) use karti hai — user ka default
+      // terminal cmd / Git Bash ho tab bhi chale, isliye shell fix karo.
+      ...(process.platform === 'win32' ? { shellPath: 'powershell.exe', shellArgs: ['-NoLogo', '-NoProfile'] } : {})
+    });
   terminal.show(true);
   terminal.sendText(plan.send, true);
   out.appendLine('[vyuha] running in the terminal — type into it if the program asks for input\n');

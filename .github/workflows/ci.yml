@@ -1,28 +1,43 @@
+# CI — VYUHA har push par Windows, Linux aur macOS teeno par test hota hai.
+#  - interpreters-test: Microsoft Store "python" stub reject, py -3, pythonPath, UTF-16 terminal log
+#  - extension-test:    "Python missing" par saaf message (Rahul ke laptop wala bug)
+#  - poora purana suite: Linux par strict; Windows/macOS par report (pehle sirf Linux par chalta tha)
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   validate:
-    name: Node ${{ matrix.node-version }} Verification
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} · Node ${{ matrix.node-version }}
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        node-version: ["20", "22"]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: ["20"]
+        include:
+          - os: ubuntu-latest
+            node-version: "22"
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Install System Build Tools
-        run: sudo apt-get update && sudo apt-get install -y build-essential python3
+      - name: Install System Build Tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3 gdb
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Set up Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
@@ -33,5 +48,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run project verification
-        run: npm run verify
+      - name: Build
+        run: npm run vendor && npm run compile
+
+      - name: Cross-platform interpreter + terminal-log tests
+        run: node tests/interpreters-test.js
+
+      - name: Extension test (Python missing → clear fix)
+        run: node tests/extension-test.js
+
+      - name: Full suite
+        continue-on-error: ${{ runner.os != 'Linux' }}
+        run: npm test
