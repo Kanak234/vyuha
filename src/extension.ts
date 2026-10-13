@@ -7,7 +7,7 @@ import { GraphEditorProvider, GraphView, ViewEvent } from './panel';
 import { RunView, RunEvent } from './runview';
 import { layerAtLine, templateSpec } from './spec';
 import { LayerTree } from './tree';
-import { RunSession, commandFor, knownExtensions, stdinFileFor, planTerminalRun, LogTail, setInterpreterSettings, toolCheck, MissingTool } from './runner';
+import { RunSession, commandFor, knownExtensions, stdinFileFor, planTerminalRun, LogTail, setInterpreterSettings, toolCheck, MissingTool, explainExitCode } from './runner';
 import { clearInterpreterCache, pythonInstallHint } from './interpreters';
 import { Payload, VFrame, parseLine } from './protocol';
 import { analyzeSource, stagesFor, autoFrame, initialState, AutoState, CodeGraph, Stage } from './codegraph';
@@ -306,7 +306,8 @@ function startInTerminal(ctx: RunCtx, inputFile?: string) {
   const plan = planTerminalRun(ctx.command, ctx.cwd, inputFile);
   cleanupFiles = plan.cleanup;
 
-  terminal = vscode.window.terminals.find(t => t.name === TERMINAL_NAME && !t.exitStatus)
+  // 4.1.5: abhi-abhi band kiya gaya terminal list mein thodi der dikh sakta hai — use dobara mat uthao
+  terminal = vscode.window.terminals.find(t => t.name === TERMINAL_NAME && !t.exitStatus && !closedTerminals.has(t))
     || vscode.window.createTerminal({
       name: TERMINAL_NAME, cwd: ctx.cwd,
       // Windows: run line PowerShell syntax (Tee-Object) use karti hai — user ka default
@@ -485,12 +486,25 @@ function finishRun(ctx: RunCtx, code: number | null, elapsedMs: number | null) {
 
 const TERMINAL_NAME = 'VYUHA';
 let terminal: vscode.Terminal | undefined;
+// 4.1.5: jo terminals humne khud band kiye (dispose), unhe reuse nahi karna
+const closedTerminals = new WeakSet<vscode.Terminal>();
 let tail: LogTail | undefined;
 let termTimer: NodeJS.Timeout | undefined;
 let cleanupFiles: string[] = [];
 
 function stopEverything() {
   if (session && session.running) session.stop();
+  /*
+   * 4.1.5 fix: pichla program terminal mein abhi chal raha ho (jaise cin par ruka)
+   * aur user dobara Run dabaye, to nayi command usi program ke stdin mein TYPE ho
+   * jaati thi — log mein do runs ki lines aapas mein mil jaati thin aur exe lock
+   * rehta tha. Ab chalte run ka terminal band (dispose) karte hain — isse uska
+   * poora process tree khatam hota hai — aur startInTerminal() naya terminal kholta hai.
+   */
+  if (tail) {
+    if (terminal && !terminal.exitStatus) { closedTerminals.add(terminal); try { terminal.dispose(); } catch { /* already closing */ } }
+    terminal = undefined;
+  }
   if (tail) { tail.stop(); tail = undefined; }
   if (termTimer) { clearTimeout(termTimer); termTimer = undefined; }
   removeScratch();
@@ -552,7 +566,9 @@ function describeExit(code: number | null, signal: string | null): string {
   if (signal) return 'stopped (' + signal + ')';
   if (code === 0) return 'finished';
   if (code === null) return 'stopped';
-  return 'exited with code ' + code;
+  // 4.1.5: Windows crash code (jaise -1073740791) ka matlab bhi saath mein
+  const why = explainExitCode(code);
+  return 'exited with code ' + code + (why ? ' — ' + why : '');
 }
 
 function ensureRunView() {

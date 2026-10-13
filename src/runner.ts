@@ -269,6 +269,20 @@ export function commandFor(file: string, overrides: Record<string, string>): str
   if (['c', 'cpp', 'cc', 'cxx'].includes(ext)) {
     const cc = resolveCCompiler(ext !== 'c');
     if (cc) template = template.replace(/^(cc|c\+\+)\b/, cc);
+    /*
+     * 4.1.5 fix (Rahul ke laptop par C++ program -1073740791 / 0xC0000409 se crash):
+     * Kyun: MinGW g++ ka .exe chalte waqt libstdc++-6.dll / libgcc_s_seh-1.dll
+     * PATH se uthata hai. Kisi PC par PATH mein pehle KOI DOOSRA MinGW (Code::Blocks,
+     * Git, Anaconda, Strawberry Perl…) baitha ho to galat version ki DLL load hoti hai
+     * aur program bina kisi galti ke crash ho jaata hai (0xC0000139 / 0xC0000409).
+     * Kya karta hai: Windows par gcc/g++ ko `-static` dete hain — runtime .exe ke
+     * andar hi jud jaata hai, PATH ki DLLs ki zaroorat hi nahi. Ab har laptop par
+     * same .exe same tarah chalega. clang (MSVC target) ko nahi chhedte.
+     * Aage: yahi template neeche expand() mein ${file}/${bin} se bharta hai.
+     */
+    if (cc && process.platform === 'win32' && /^(gcc|g\+\+)$/.test(cc)) {
+      template = template.replace(/^(gcc|g\+\+)\b/, '$1 -static');
+    }
   }
 
   if (ext === 'go') {
@@ -375,6 +389,34 @@ export function stdinFileFor(file: string, explicit?: string): string | undefine
  */
 
 export const EXIT_SENTINEL = '@@VYUHA_EXIT';
+
+/**
+ * 4.1.5: Windows crash codes ko insaan ki bhasha mein.
+ * Kyun: crash hone par cmd ko NTSTATUS milta hai, jo signed number ban kar
+ * "-1073740791" jaisa dikhta tha — isse koi samajh nahi paata ki hua kya.
+ * Kya karta hai: code ko 0xC0000409 form mein badal kar naam + sabse aam wajah
+ * batata hai. Aage: extension.ts ka finishRun() isse output mein chhaapta hai.
+ * Unknown / normal exit code par null — tab sirf number dikhta hai.
+ */
+const WIN_CRASH: Record<number, [string, string]> = {
+  0xC0000005: ['ACCESS_VIOLATION', 'invalid memory access — null/dangling pointer, or an array index far out of range'],
+  0xC00000FD: ['STACK_OVERFLOW', 'recursion too deep (missing base case?) or a huge local array — make it global/static or use vector'],
+  0xC0000409: ['STACK_BUFFER_OVERRUN / FAST_FAIL', 'the program aborted: an array written past its end, an uncaught exception (e.g. vector.at() out of range), or abort()'],
+  0xC0000094: ['INTEGER_DIVIDE_BY_ZERO', 'an integer was divided (or % taken) by zero'],
+  0xC0000374: ['HEAP_CORRUPTION', 'memory freed twice, or written past the end of a new[]/malloc block'],
+  0xC000001D: ['ILLEGAL_INSTRUCTION', 'the .exe was built for a newer CPU, or the program hit a trap'],
+  0xC0000135: ['DLL_NOT_FOUND', 'a runtime DLL (libstdc++-6.dll, libgcc…) is missing from PATH'],
+  0xC0000139: ['ENTRYPOINT_NOT_FOUND', 'a DIFFERENT compiler\'s runtime DLL on PATH was loaded — fix PATH or compile with -static'],
+  0xC000013A: ['CONTROL_C_EXIT', 'stopped with Ctrl+C']
+};
+
+export function explainExitCode(code: number | null): string | null {
+  if (code === null || code === 0) return null;
+  const u = code >>> 0;                         // -1073740791 → 0xC0000409
+  const hit = WIN_CRASH[u];
+  if (!hit) return null;
+  return 'crashed: 0x' + u.toString(16).toUpperCase() + ' ' + hit[0] + ' — ' + hit[1];
+}
 
 const ANSI = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
 

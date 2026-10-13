@@ -108,6 +108,41 @@ if (real) {
   ok('compiled binary gets .exe on Windows', !win || /\.exe"/.test(cmd));
 }
 
+// 6) 4.1.5 — Rahul ke laptop par C++ ka -1073740791 (0xC0000409) crash
+{
+  process.env.PATH = savedPath;
+  const { I, R } = fresh();
+  // (a) crash code ka matlab insaan ki bhasha mein
+  const why = R.explainExitCode(-1073740791);
+  ok('-1073740791 is explained as 0xC0000409', !!why && why.includes('0xC0000409'), why);
+  ok('stack overflow code is explained', (R.explainExitCode(-1073741571) || '').includes('STACK_OVERFLOW'));
+  ok('normal exit codes get no crash text', R.explainExitCode(0) === null && R.explainExitCode(1) === null && R.explainExitCode(null) === null);
+
+  // (b) Windows + g++: .exe static banta hai (PATH ki galat DLL ka asar nahi)
+  const cxx = I.resolveCCompiler(true);
+  if (cxx) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vyuha-cxx-'));
+    const hello = path.join(dir, 'hello.cpp');
+    fs.writeFileSync(hello, '#include <iostream>\n#include <string>\nint main(){ std::string s = "static ok"; std::cout << s << std::endl; return 0; }\n');
+    const cmd = R.commandFor(hello, {});
+    if (win && /^g\+\+\b/.test(cmd)) ok('Windows g++ command builds a static .exe', /^g\+\+ -static /.test(cmd), cmd);
+    else ok('non-Windows / non-g++ command is unchanged (no -static)', !/ -static /.test(cmd), cmd);
+    const r = spawnSync(cmd, { shell: true, cwd: dir, encoding: 'utf8', timeout: 120000 });
+    ok('C++ hello compiles and runs with this command', r.status === 0 && /static ok/.test(r.stdout), (r.stderr || '').slice(0, 300));
+
+    // (c) asli crash: uncaught exception. Windows par yahi 0xC0000409 deta hai.
+    const boom = path.join(dir, 'boom.cpp');
+    fs.writeFileSync(boom, '#include <vector>\nint main(){ std::vector<int> v(3); return v.at(10); }\n');
+    const rb = spawnSync(R.commandFor(boom, {}), { shell: true, cwd: dir, encoding: 'utf8', timeout: 120000 });
+    ok('a crashing C++ program exits non-zero', rb.status !== 0, 'status=' + rb.status);
+    // MinGW (msvcrt) abort par 3 deta hai, UCRT par 0xC0000409 — dono sahi, isliye sirf log
+    console.log('     crash status=' + rb.status + ' → ' + (R.explainExitCode(rb.status) || '(plain exit code)'));
+    fs.rmSync(dir, { recursive: true, force: true });
+  } else {
+    console.log('SKIP C++ checks — no C++ compiler on this machine');
+  }
+}
+
 process.env.PATH = savedPath;
 fs.rmSync(stubDir, { recursive: true, force: true });
 if (failures) { console.log('\nINTERPRETER TEST FAILED: ' + failures); process.exit(1); }

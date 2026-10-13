@@ -2,7 +2,7 @@
   "name": "vyuha",
   "displayName": "VYUHA",
   "description": "Run your code in any language and watch it draw itself in 3D — every program, even one that prints only hello world.",
-  "version": "4.1.4",
+  "version": "4.1.5",
   "publisher": "KANAKPRABHAKAR",
   "license": "MIT",
   "icon": "media/icon.png",

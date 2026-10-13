@@ -99,7 +99,7 @@ function install(opts = {}) {
       panels.push(p);
       return p;
     },
-    createTerminal: (o) => { const t = { name: (o && o.name) || o, options: o, sent: [], show() {}, sendText(s) { this.sent.push(s); }, dispose() {} }; terminals.push(t); return t; },
+    createTerminal: (o) => { const t = { name: (o && o.name) || o, options: o, sent: [], show() {}, sendText(s) { this.sent.push(s); }, dispose() { this.disposed = true; } }; terminals.push(t); return t; },
     onDidChangeActiveTextEditor: on('activeEditor'),
     onDidCloseTerminal: on('closeTerminal'),
     registerWebviewViewProvider: () => ({ dispose() {} }),

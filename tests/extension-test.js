@@ -37,6 +37,23 @@ const ext = require(path.join(__dirname, '..', 'out', 'extension.js'));
   ok('a clear "Python 3 is not installed / not found" message is shown', err && /Python 3/.test(err.m), err && err.m);
   ok('…with a fix offered (download / one-command install / set path)', answers.some(a => a.b.includes('Download Python') && a.b.includes('I have Python — set path')));
   ok('no terminal was started with the broken command', vscode._terminals.filter(t => /VYUHA/.test(t.name) && !/install/.test(t.name)).length === 0);
+
+  // 4.1.5: pichla program terminal mein abhi chal raha ho (cin par ruka) aur Run dobara dabe —
+  // nayi command us program ke stdin mein type nahi honi chahiye (Rahul ke log mein lines mil gayi thin)
+  const js = path.join(os.tmpdir(), 'rerun_' + process.pid + '.js');
+  fs.writeFileSync(js, 'console.log(1)\n');
+  const before = vscode._terminals.length;
+  await vscode.commands.executeCommand('vyuha.runAndVisualize', vscode.Uri.file(js));
+  const first = vscode._terminals.filter(t => t.name === 'VYUHA').pop();
+  await new Promise(r => setTimeout(r, 900));          // duplicate-trigger window (800 ms) ke baad
+  await vscode.commands.executeCommand('vyuha.runAndVisualize', vscode.Uri.file(js));
+  const vy = vscode._terminals.filter(t => t.name === 'VYUHA');
+  const second = vy[vy.length - 1];
+  ok('a run still in progress has its terminal closed before the next run', first && first.disposed === true);
+  ok('the next run goes to a NEW terminal, not into the old program', second && second !== first && second.sent.length === 1 && first.sent.length === 1,
+     'terminals=' + (vscode._terminals.length - before));
+  await vscode.commands.executeCommand('vyuha.stopRun').then(() => {}, () => {});
+  fs.unlinkSync(js);
   fs.unlinkSync(file);
   fs.rmSync(stubDir, { recursive: true, force: true });
   if (failures) { console.log('\nEXTENSION TEST FAILED'); process.exit(1); }

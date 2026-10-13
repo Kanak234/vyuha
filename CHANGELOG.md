@@ -1,5 +1,31 @@
 # Changelog
 
+## 4.1.5 — 2026-10-13
+
+### Fixed — Windows (Rahul ke laptop par C++ crash, exit code -1073740791)
+
+- **C/C++ programs crashed on some PCs with `-1073740791` (0xC0000409).** A MinGW
+  `.exe` loads `libstdc++-6.dll` / `libgcc` from PATH at run time; when another
+  MinGW (Code::Blocks, Git, Anaconda…) sits earlier on PATH, the wrong DLL is
+  loaded and the program crashes for no fault of its own. On Windows VYUHA now
+  builds with `g++ -static` / `gcc -static`, so the runtime lives inside the
+  `.exe` and PATH no longer matters.
+- **Crash codes are explained.** Instead of a bare `-1073740791`, the output now
+  says e.g. `0xC0000409 STACK_BUFFER_OVERRUN / FAST_FAIL — an array written past
+  its end, an uncaught exception, or abort()`. Also covers access violation,
+  stack overflow (deep recursion), divide by zero, heap corruption and DLL errors.
+- **Pressing Run while the previous program was still running** (e.g. waiting
+  on `cin`) typed the new command into that program's input — the two runs'
+  lines got mixed in the terminal log. The running program's terminal is now
+  closed first and the new run gets a fresh terminal.
+
+### Tests
+
+- `tests/interpreters-test.js`: crash-code text, `-static` on Windows g++, a real
+  C++ compile + run, and a real crashing program.
+- `tests/extension-test.js`: a second Run while the first is in progress closes
+  the old terminal and uses a new one (fails on 4.1.4, passes now).
+
 ## 4.1.4 — 2026-10-12
 
 ### Fixed
