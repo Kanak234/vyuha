@@ -115,7 +115,8 @@ export function parseSpec(text: string): ParseResult {
   }
 
   const spec: GraphSpec = {
-    meta: (obj.meta as GraphSpec['meta']) || { name: 'network' },
+    // 4.2.0: meta object na ho ("meta": "x") to bhi spec toote nahi
+    meta: obj.meta && typeof obj.meta === 'object' && !Array.isArray(obj.meta) ? (obj.meta as GraphSpec['meta']) : { name: 'network' },
     seed: Number.isFinite(Number(obj.seed)) ? Number(obj.seed) : 1,
     layers: clean
   };
@@ -194,10 +195,27 @@ function stripComments(text: string): string {
 }
 
 function lineFromJsonError(text: string, msg: string): number | undefined {
+  const lineAt = (pos: number) => text.slice(0, pos).split(/\r?\n/).length - 1;
   const m = /position\s+(\d+)/i.exec(msg);
-  if (!m) return undefined;
-  const pos = Number(m[1]);
-  return text.slice(0, pos).split(/\r?\n/).length - 1;
+  if (m) return lineAt(Number(m[1]));
+  /*
+   * 4.2.0 fix: Node 20+ kai errors mein "position N" nahi deta, sirf
+   * `Unexpected token '}', "...snippet..." is not valid JSON`. Tab snippet ko text
+   * mein dhoondh kar galat token ki jagah nikaalte hain — warna error line nahi
+   * dikhti thi aur editor sahi jagah nahi khulta tha.
+   */
+  if (/end of JSON input/i.test(msg)) return text.split(/\r?\n/).length - 1;
+  const tok = /Unexpected (?:token|non-whitespace character)\s*'?([^',\s])'?/i.exec(msg);
+  const snip = /"([\s\S]*)" is not valid JSON/.exec(msg);
+  if (tok && snip) {
+    const inner = snip[1].replace(/^\.\.\./, '').replace(/\.\.\.$/, '');
+    const at = text.indexOf(inner);
+    if (at >= 0) {
+      const k = inner.indexOf(tok[1]);
+      return lineAt(at + (k >= 0 ? k : 0));
+    }
+  }
+  return undefined;
 }
 
 /** The template dropped by "New graph spec file". */

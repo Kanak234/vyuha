@@ -2,7 +2,7 @@
   "name": "vyuha",
   "displayName": "VYUHA",
   "description": "Run your code in any language and watch it draw itself in 3D — every program, even one that prints only hello world.",
-  "version": "4.1.5",
+  "version": "4.2.0",
   "publisher": "KANAKPRABHAKAR",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -567,7 +567,7 @@
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run vendor && npm run compile",
     "package": "vsce package",
-    "test": "node tests/render-smoke.js && node tests/ds-smoke.js && node tests/runner-test.js && node tests/auto-test.js && node tests/compiler-test.js && node tests/v4-test.js && node tests/interpreters-test.js",
+    "test": "node tests/render-smoke.js && node tests/ds-smoke.js && node tests/runner-test.js && node tests/auto-test.js && node tests/compiler-test.js && node tests/v4-test.js && node tests/interpreters-test.js && node tests/stability-test.js",
     "verify": "npm run vendor && npm run compile && npm test",
     "build": "npm run compile"
   },

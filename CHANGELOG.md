@@ -1,5 +1,51 @@
 # Changelog
 
+## 4.2.0 — 2026-10-13 · stable
+
+A stability release: a new 158-check test (`tests/stability-test.js`) went over
+every part of VYUHA and found 15 real bugs. All are fixed.
+
+### Fixed — @vyuha frames
+- `null`, `""`, `true` / `false` in an array became bars of height 0 or 1.
+  They now have no height, like text values.
+- A very deep tree (10,000+ levels) crashed the run with "Maximum call stack size
+  exceeded". Trees are now walked without recursion.
+- Two nodes with the same id were both drawn, and edges joined the wrong one.
+  The first one is kept.
+- Long emoji / Hindi labels were cut in the middle of a character.
+- Tree children given as plain values (`"children": [1, 2]`) are now labelled
+  with their values.
+
+### Fixed — terminal runs
+- Window-title and VS Code shell-integration codes (OSC sequences) were left in
+  the transcript, so a `@vyuha` line after them was not drawn.
+
+### Fixed — helper libraries
+- **C++ (`vyuha.hpp`)**: control characters in titles were written as `\u001`
+  (invalid JSON). `vector<string>` and `vector<char>` were written without
+  quotes, and `NaN` / `inf` doubles as `nan` / `inf`. Each of these made the
+  whole frame invalid JSON. `tree(nullptr)` was rejected. All of these now
+  produce valid frames.
+- **Python (`vyuha.py`)**: `float('nan')` / `inf` produced `NaN`, which is not
+  JSON, so the frame was dropped. They are now `null`. A tree whose nodes point
+  back to each other no longer recurses forever.
+- **JavaScript (`vyuha.js`)**: a cyclic tree crashed the user's program, and so
+  did a `BigInt` value. Both are handled now.
+
+### Fixed — source picture and net specs
+- Loops and prints inside `/* block comments */` and Python `"""docstrings"""`
+  were drawn as real code. Python `a // b` (integer division) was treated as a
+  comment, which cut the line off.
+- A broken `.vyuha.json` spec showed no error line on Node 20+.
+- A spec whose `meta` was not an object now loads.
+
+### Tests
+- `tests/stability-test.js` (158 checks) is part of `npm test`, so it runs in CI
+  on Windows, Linux and macOS. It covers the protocol, the terminal transcript
+  reader, real shell runs, the background runner, run commands for 50+
+  languages, crash codes, stdin files, the source graph, net specs, and the
+  Python / JS / C / C++ / Java / Go helpers compiled and run for real.
+
 ## 4.1.5 — 2026-10-13
 
 ### Fixed — Windows (Rahul ke laptop par C++ crash, exit code -1073740791)

@@ -59,6 +59,19 @@ def _caller_line():
     return None
 
 
+def _finite(v, _depth=0):
+    """NaN / inf → None, poore payload mein (list, tuple, dict ke andar bhi)."""
+    if isinstance(v, float):
+        return v if v == v and v not in (float("inf"), float("-inf")) else None
+    if _depth > 200:                      # bahut gehra / cyclic data — aage mat jao
+        return None
+    if isinstance(v, dict):
+        return {k: _finite(x, _depth + 1) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_finite(x, _depth + 1) for x in v]
+    return v
+
+
 def emit(payload):
     """Write one frame. Everything else here funnels through this."""
     # 4.0.0: stamp the caller's line unless the caller already gave one
@@ -67,7 +80,9 @@ def emit(payload):
         ln = _caller_line()
         if ln is not None:
             payload["line"] = ln
-    _sys.stdout.write("@vyuha " + _json.dumps(payload, default=str) + "\n")
+    # 4.2.0 fix: json.dumps NaN/Infinity ko `NaN` likhta hai jo JSON nahi hai —
+    # VYUHA us poore frame ko "not JSON" bol kar chhod deta tha. Ab woh null bante hain.
+    _sys.stdout.write("@vyuha " + _json.dumps(_finite(payload), default=str, allow_nan=False) + "\n")
     _sys.stdout.flush()
 
 
@@ -134,20 +149,24 @@ def tree(root, active=None, title=None, note=None, line=None):
     emit(_meta({"kind": "tree", "tree": _tree_of(root)}, title, note, active, None, line))
 
 
-def _tree_of(node):
-    if node is None:
+def _tree_of(node, _seen=None):
+    # 4.2.0: cycle guard — galti se node khud ko point kare to infinite recursion nahi
+    if _seen is None:
+        _seen = set()
+    if node is None or id(node) in _seen:
         return None
     if isinstance(node, dict):
         return node
+    _seen.add(id(node))
     out = {"value": _value_of(node)}
     if hasattr(node, "state"):
         out["state"] = getattr(node, "state")
     kids = getattr(node, "children", None)
     if kids is not None:
-        out["children"] = [_tree_of(k) for k in kids if k is not None]
+        out["children"] = [c for c in (_tree_of(k, _seen) for k in kids if k is not None) if c is not None]
     else:
-        left = _tree_of(getattr(node, "left", None))
-        right = _tree_of(getattr(node, "right", None))
+        left = _tree_of(getattr(node, "left", None), _seen)
+        right = _tree_of(getattr(node, "right", None), _seen)
         if left is not None:
             out["left"] = left
         if right is not None:

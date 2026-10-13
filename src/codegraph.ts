@@ -118,7 +118,9 @@ export function analyzeSource(file: string, source: string): CodeGraph {
   let truncated = false;
 
   try {
-    const lines = source.split(/\r?\n/);
+    // 4.2.0: /* block comments */ aur Python """docstrings""" ko pehle khaali karo
+    // (line count wahi rehta hai) — warna unke andar likha `for`/`while` loop ban jaata tha.
+    const lines = maskBlocks(source, language).split(/\r?\n/);
     const funcRes = FUNC_RE[language] || FUNC_RE.c;
     const indentBased = language === 'py' || language === 'ruby' || language === 'haskell' ||
       language === 'elixir' || language === 'r';
@@ -126,7 +128,7 @@ export function analyzeSource(file: string, source: string): CodeGraph {
     /* Pass 1 — every function name we can see, so calls can be resolved. */
     const funcLine = new Map<string, number>();
     lines.forEach((raw, i) => {
-      const line = strip(raw);
+      const line = strip(raw, language);
       if (!line) return;
       for (const re of funcRes) {
         const m = re.exec(line);
@@ -145,9 +147,9 @@ export function analyzeSource(file: string, source: string): CodeGraph {
 
     for (let i = 0; i < lines.length; i++) {
       const raw = lines[i];
-      const line = strip(raw);
+      const line = strip(raw, language);
       const lineNo = i + 1;
-      if (!line) { if (!indentBased) depth += braceDelta(raw); continue; }
+      if (!line) { if (!indentBased) depth += braceDelta(raw, language); continue; }
 
       const indent = indentBased ? leadingSpaces(raw) : depth;
 
@@ -215,7 +217,7 @@ export function analyzeSource(file: string, source: string): CodeGraph {
         }
       }
 
-      if (!indentBased) depth += braceDelta(raw);
+      if (!indentBased) depth += braceDelta(raw, language);
     }
   } catch {
     /* A malformed file should still draw. */
@@ -254,21 +256,49 @@ function matchAny(res: RegExp[], line: string): string | undefined {
   return undefined;
 }
 
+/*
+ * 4.2.0: kaun si language mein kaunsa comment hota hai.
+ *   HASH  — '#' se comment (Python, Ruby, shell…) — yahan '//' comment NAHI hai
+ *           (Python mein `a // b` integer division hai, pehle line wahin kat jaati thi).
+ *   SLASH — '//' aur /* *\/ wali languages; '#' sirf C preprocessor ke liye.
+ */
+const HASH_LANGS = new Set(['py', 'ruby', 'shell', 'perl', 'r', 'julia', 'elixir']);
+const BLOCK_LANGS = new Set(['c', 'java', 'js', 'go', 'rust', 'php']);
+
+/** Block comments / docstrings ko spaces se bhar do, newlines rakh kar (line numbers same). */
+function maskBlocks(src: string, language: string): string {
+  const blank = (m: string) => m.replace(/[^\r\n]/g, ' ');
+  if (BLOCK_LANGS.has(language)) {
+    // strings ko chhod kar hi /* */ dhoondho, taaki "a/*b" string comment na lage
+    return src.replace(/"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|\/\*[\s\S]*?(?:\*\/|$)/g,
+      m => m.startsWith('/*') ? blank(m) : m);
+  }
+  if (language === 'py') {
+    return src.replace(/(?:"""[\s\S]*?(?:"""|$))|(?:\'\'\'[\s\S]*?(?:\'\'\'|$))/g, blank);
+  }
+  return src;
+}
+
 /** Comments and string bodies removed, so keywords inside them do not count. */
-function strip(raw: string): string {
+function strip(raw: string, language = 'c'): string {
   let s = raw.replace(/"(?:\\.|[^"\\])*"/g, '""').replace(/'(?:\\.|[^'\\])*'/g, "''");
-  const c = s.indexOf('//');
-  if (c >= 0) s = s.slice(0, c);
-  const h = s.search(/(^|\s)#(?!include|vyuha)/);
-  if (h >= 0 && /\.(py|rb|sh|pl|r)$/.test('') === false) {
-    // '#' starts a comment in several languages; keep C preprocessor lines.
-    if (!/^\s*#\s*(include|define|pragma|ifndef|ifdef|endif|if|else)/.test(s)) s = s.slice(0, h);
+  if (HASH_LANGS.has(language)) {
+    const h = s.search(/(^|\s)#(?!vyuha)/);
+    if (h >= 0) s = s.slice(0, h);
+  } else {
+    const c = s.indexOf('//');
+    if (c >= 0) s = s.slice(0, c);
+    // '#' comment sirf tab jab yeh C preprocessor line na ho (#include, #define…)
+    if (language !== 'c') {
+      const h = s.search(/(^|\s)#(?!include|vyuha)/);
+      if (h >= 0 && !/^\s*#\s*(include|define|pragma|ifndef|ifdef|endif|if|else)/.test(s)) s = s.slice(0, h);
+    }
   }
   return s.trim();
 }
 
-function braceDelta(raw: string): number {
-  const s = strip(raw);
+function braceDelta(raw: string, language = 'c'): number {
+  const s = strip(raw, language);
   let d = 0;
   for (const ch of s) { if (ch === '{') d++; else if (ch === '}') d--; }
   return d;

@@ -422,7 +422,12 @@ const ANSI = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-
 
 /** Terminal logs carry cursor moves and colour codes; frames do not want them. */
 export function stripAnsi(s: string): string {
-  let t = s.replace(ANSI, '').replace(/\r(?!\n)/g, '');
+  /*
+   * 4.2.0 fix: OSC sequences (window title `ESC ] 0;… BEL`, VS Code shell
+   * integration `ESC ] 633;… ESC \\`) pehle bache reh jaate the — line ke aage
+   * kachra aata tha aur `@vyuha` frame parse nahi hota tha. Pehle inhe hatao.
+   */
+  let t = s.replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, '').replace(ANSI, '').replace(/\r(?!\n)/g, '');
   /*
    * macOS `script` writes "^D" + two backspaces when the program's stdin ends
    * (it echoes the EOF it sends). That landed at the START of the program's first

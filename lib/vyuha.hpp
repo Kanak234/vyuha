@@ -47,7 +47,11 @@ inline std::string esc(const std::string& s) {
             case '\r': o << "\\r";  break;
             case '\t': o << "\\t";  break;
             default:
-                if (static_cast<unsigned char>(c) < 0x20) o << "\\u00" << std::hex << (int)c;
+                // 4.2.0 fix: pehle "\u001" (1 hex digit) likhta tha = invalid JSON
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    const char* hx = "0123456789abcdef";
+                    o << "\\u00" << hx[(c >> 4) & 0xF] << hx[c & 0xF];
+                }
                 else o << c;
         }
     }
@@ -75,11 +79,28 @@ inline std::string meta(const std::string& title, const std::string& note) {
     return o.str();
 }
 
+/*
+ * 4.2.0 fix: har value ko sahi JSON mein likho.
+ * Pehle `o << v[i]` tha — vector<string> bina quotes ke, vector<char> kachcha
+ * character, double NaN/inf "nan"/"inf" ban jaate the: poora frame invalid JSON.
+ */
+inline void value(std::ostream& o, const std::string& s) { o << "\"" << esc(s) << "\""; }
+inline void value(std::ostream& o, const char* s) { value(o, std::string(s ? s : "")); }
+inline void value(std::ostream& o, char c) { value(o, std::string(1, c)); }
+inline void value(std::ostream& o, bool b) { o << (b ? "true" : "false"); }
+inline void value(std::ostream& o, long double d) {
+    if (d != d || d > 1.7976931348623157e308L || d < -1.7976931348623157e308L) { o << "null"; return; }
+    std::ostringstream t; t.precision(15); t << static_cast<double>(d); o << t.str();
+}
+inline void value(std::ostream& o, double d) { value(o, static_cast<long double>(d)); }
+inline void value(std::ostream& o, float d) { value(o, static_cast<long double>(d)); }
+template <typename T> void value(std::ostream& o, const T& v) { o << +v; }   // int, long, unsigned…
+
 template <typename T>
 std::string numbers(const std::vector<T>& v) {
     std::ostringstream o;
     o << "[";
-    for (size_t i = 0; i < v.size(); ++i) { if (i) o << ","; o << v[i]; }
+    for (size_t i = 0; i < v.size(); ++i) { if (i) o << ","; value(o, static_cast<T>(v[i])); }
     o << "]";
     return o.str();
 }
@@ -180,13 +201,13 @@ struct TreeNode {
     explicit TreeNode(const std::string& v) : value(v), left(0), right(0) {}
 };
 
-inline std::string treeJson(const TreeNode* n) {
-    if (!n) return "null";
+inline std::string treeJson(const TreeNode* n, int depth = 0) {
+    if (!n || depth > 5000) return "null";
     std::ostringstream o;
     o << "{\"value\":\"" << esc(n->value) << "\"";
     if (!n->state.empty()) o << ",\"state\":\"" << esc(n->state) << "\"";
-    if (n->left)  o << ",\"left\":"  << treeJson(n->left);
-    if (n->right) o << ",\"right\":" << treeJson(n->right);
+    if (n->left)  o << ",\"left\":"  << treeJson(n->left, depth + 1);
+    if (n->right) o << ",\"right\":" << treeJson(n->right, depth + 1);
     o << "}";
     return o.str();
 }
@@ -194,6 +215,8 @@ inline std::string treeJson(const TreeNode* n) {
 inline void tree(const TreeNode* root, const std::string& title = "", const std::string& note = "",
                  int line = VYUHA_HERE) {
     std::ostringstream o;
+    // 4.2.0 fix: khaali tree (nullptr) par "tree":null bheja jaata tha jo VYUHA reject karta tha
+    if (!root) { std::ostringstream e; e << "{\"kind\":\"tree\",\"nodes\":[]" << detail::meta(title, note) << "}"; emit(e.str(), line); return; }
     o << "{\"kind\":\"tree\",\"tree\":" << treeJson(root) << detail::meta(title, note) << "}";
     emit(o.str(), line);
 }
@@ -217,7 +240,7 @@ inline void graph(const std::map<std::string, std::vector<std::pair<std::string,
         for (size_t i = 0; i < it->second.size(); ++i) {
             if (i) o << ",";
             if (it->second[i].second != 0.0)
-                o << "[\"" << esc(it->second[i].first) << "\"," << it->second[i].second << "]";
+                { o << "[\"" << esc(it->second[i].first) << "\","; detail::value(o, it->second[i].second); o << "]"; }
             else
                 o << "\"" << esc(it->second[i].first) << "\"";
         }

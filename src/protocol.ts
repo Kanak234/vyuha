@@ -216,8 +216,17 @@ function fromNested(root: any, o: Record<string, any>, meta: Meta = {}): VFrame 
   const nodes: VNode[] = [];
   const edges: VEdge[] = [];
   let auto = 0;
-  const walk = (n: any, parent: string | null, slot?: string) => {
-    if (n === null || n === undefined) return;
+  /*
+   * 4.2.0 fix: pehle yeh recursive tha — 10,000+ gehra tree (jaise ek taraf jhuka BST
+   * ya linked-list jaisa tree) "Maximum call stack size exceeded" se run gira deta tha.
+   * Ab apna stack (array) — gehraai kitni bhi ho, crash nahi. Order wahi rehta hai
+   * (pre-order, left pehle) taaki purane frames jaise hi dikhe.
+   */
+  const todo: Array<[any, string | null, string | undefined]> = [[root, null, undefined]];
+  while (todo.length) {
+    let [n, parent, slot] = todo.pop()!;
+    if (n === null || n === undefined) continue;
+    if (typeof n !== 'object') n = { value: n };       // children: [1, 2] bhi chale
     const id = n.id !== undefined ? String(n.id) : 't' + auto++;
     nodes.push(cleanNode({
       id,
@@ -231,9 +240,8 @@ function fromNested(root: any, o: Record<string, any>, meta: Meta = {}): VFrame 
     const kids: Array<[any, string | undefined]> = Array.isArray(n.children)
       ? n.children.map((c: any) => [c, undefined] as [any, string | undefined])
       : [[n.left, 'L'], [n.right, 'R']];
-    kids.forEach(pair => walk(pair[0], id, pair[1]));
-  };
-  walk(root, null);
+    for (let k = kids.length - 1; k >= 0; k--) todo.push([kids[k][0], id, kids[k][1]]);
+  }
   if (!nodes.length) throw new Error('the tree payload has no nodes');
   return frame(pickKind(o.kind, 'tree'), nodes, edges, meta);
 }
@@ -285,6 +293,11 @@ function fromNodes(rawNodes: any[], rawEdges: any, o: Record<string, any>, meta:
       line: lineNo(n.line)          // 4.0.0: per-node source line in node lists
     });
   });
+  // 4.2.0 fix: do nodes ka ek hi id — renderer ek ko doosre ke upar bana deta tha
+  // aur edges galat node se judti thi. Pehla rakho, baaki chhodo.
+  const seenIds = new Set<string>();
+  const unique = nodes.filter(n => (seenIds.has(n.id) ? false : (seenIds.add(n.id), true)));
+  nodes.length = 0; nodes.push(...unique);
   const known = new Set(nodes.map(n => n.id));
   const edges: VEdge[] = toArray(rawEdges).map((e: any) => {
     const from = String(Array.isArray(e) ? e[0] : (e.from ?? e.source ?? e.u));
@@ -364,11 +377,22 @@ function label(v: unknown): string {
   if (v === null) return 'null';
   if (v === undefined) return '';
   if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(2);
-  if (typeof v === 'object') return JSON.stringify(v).slice(0, 24);
-  return String(v).slice(0, 24);
+  // 4.2.0: emoji / Hindi ko beech se mat kaato — code point ke hisaab se 24 tak
+  if (typeof v === 'object') return cut24(JSON.stringify(v));
+  return cut24(String(v));
+}
+
+function cut24(s: string): string {
+  return s.length <= 24 ? s : Array.from(s).slice(0, 24).join('');
 }
 
 function num(v: unknown): number | undefined {
+  /*
+   * 4.2.0 fix: Number(null), Number('') aur Number(false) sab 0 dete hain, Number(true) 1.
+   * Isse [null, 3] mein null ka bar 0 height ka ban jaata tha. Ab sirf asli number
+   * ya number jaisi string (jaise "3.5") ko value milti hai.
+   */
+  if (typeof v === 'string' ? v.trim() === '' : typeof v !== 'number') return undefined;
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : undefined;
 }
