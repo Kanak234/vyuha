@@ -18,3 +18,6 @@ media/three.min.js
 *.gguf
 *.pt
 *.safetensors
+
+# VS Code Web test download (~205 MB)
+.vscode-test-web/

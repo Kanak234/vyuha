@@ -131,6 +131,27 @@ its preorder and inorder traversals and walks it three ways, one frame per step.
 
 ---
 
+## Use in the browser (vscode.dev)
+
+VYUHA runs on [vscode.dev](https://vscode.dev) and in **GitHub Codespaces** — no install needed. Open a `.vyuha.json` or `.netgraph.json` file and visualize immediately.
+
+| Works on web ✅ | Desktop only ❌ |
+|---|---|
+| Graph spec editor (`.vyuha.json`, `.netgraph.json`) | Run and Visualize (any language) |
+| Neural network visualization (inference, trace path) | Stop Run / Re-run |
+| Data structure visualization (from loaded traces) | Visualize Compilation (real toolchain) |
+| Timeline playback (play/pause/step/goto frame) | Debug Visualize (gdb/jdb/Python tracer) |
+| Layer tree view, double-tap → reveal source line | Run Selection / Run By Language |
+| Export trace as JSON, export animation as GIF | Open Compiler Stage Artifact |
+| Fetch live trace from HTTP endpoint | Terminal integration |
+| Add helper library (Python, JS, Java, C++, C, Go) | Auto-visualization of plain programs |
+| Open bundled examples | |
+| All `vyuha.*` settings | |
+
+> **On the web:** Program execution needs desktop VS Code (it runs real compilers). Visualization works here. If you trigger a desktop-only command, you'll see: *"This feature needs VS Code Desktop (it runs real compilers). Visualization works here."*
+
+---
+
 ## Languages
 
 Fifty-odd extensions are mapped out of the box: Python, JavaScript, TypeScript, Java, Kotlin, C, C++, Objective-C, Go, Rust, Ruby, PHP, Perl, Lua, shell, PowerShell, R, Julia, Swift, Dart, Scala, Groovy, Clojure, Haskell, Elixir, Erlang, Nim, Zig, Crystal, D, V, Fortran, C#, F#, CoffeeScript, Tcl, awk and more.

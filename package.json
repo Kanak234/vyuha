@@ -2,7 +2,7 @@
   "name": "vyuha",
   "displayName": "VYUHA",
   "description": "Run your code in any language and watch it draw itself in 3D — every program, even one that prints only hello world.",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "publisher": "KANAKPRABHAKAR",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -49,6 +49,7 @@
     "python"
   ],
   "main": "./out/extension.js",
+  "browser": "./dist/web/extension.js",
   "activationEvents": [
     "onLanguage:json",
     "onLanguage:jsonc",
@@ -88,19 +89,22 @@
         "command": "vyuha.runAndVisualize",
         "title": "Run and Visualize",
         "category": "VYUHA",
-        "icon": "$(run-all)"
+        "icon": "$(run-all)",
+        "when": "!isWeb"
       },
       {
         "command": "vyuha.stopRun",
         "title": "Stop Running Program",
         "category": "VYUHA",
-        "icon": "$(debug-stop)"
+        "icon": "$(debug-stop)",
+        "when": "!isWeb"
       },
       {
         "command": "vyuha.rerun",
         "title": "Re-run Last Program",
         "category": "VYUHA",
-        "icon": "$(debug-restart)"
+        "icon": "$(debug-restart)",
+        "when": "!isWeb"
       },
       {
         "command": "vyuha.showOutput",
@@ -198,19 +202,23 @@
       {
         "command": "vyuha.visualizeCompilation",
         "title": "VYUHA: Visualize Compilation (real toolchain)",
-        "icon": "$(circuit-board)"
+        "icon": "$(circuit-board)",
+        "when": "!isWeb"
       },
       {
         "command": "vyuha.runSelection",
-        "title": "VYUHA: Run Selected Code"
+        "title": "VYUHA: Run Selected Code",
+        "when": "!isWeb"
       },
       {
         "command": "vyuha.runByLanguage",
-        "title": "VYUHA: Run By Language…"
+        "title": "VYUHA: Run By Language…",
+        "when": "!isWeb"
       },
       {
         "command": "vyuha.openCompileArtifact",
-        "title": "VYUHA: Open Compiler Stage Artifact…"
+        "title": "VYUHA: Open Compiler Stage Artifact…",
+        "when": "!isWeb"
       },
       {
         "command": "vyuha.exportGif",
@@ -220,7 +228,8 @@
       {
         "command": "vyuha.debugVisualize",
         "title": "VYUHA: Debug Visualize (no print statements)",
-        "icon": "$(debug-alt)"
+        "icon": "$(debug-alt)",
+        "when": "!isWeb"
       }
     ],
     "keybindings": [
@@ -228,35 +237,37 @@
         "command": "vyuha.runAndVisualize",
         "key": "ctrl+alt+v",
         "mac": "cmd+alt+v",
-        "when": "editorTextFocus"
+        "when": "editorTextFocus && !isWeb"
       },
       {
         "command": "vyuha.stopRun",
         "key": "ctrl+alt+x",
-        "mac": "cmd+alt+x"
+        "mac": "cmd+alt+x",
+        "when": "!isWeb"
       },
       {
         "command": "vyuha.runAndVisualize",
         "key": "ctrl+alt+n",
         "mac": "cmd+alt+n",
-        "when": "editorTextFocus"
+        "when": "editorTextFocus && !isWeb"
       },
       {
         "command": "vyuha.stopRun",
         "key": "ctrl+alt+m",
-        "mac": "cmd+alt+m"
+        "mac": "cmd+alt+m",
+        "when": "!isWeb"
       },
       {
         "command": "vyuha.visualizeCompilation",
         "key": "ctrl+alt+c",
         "mac": "cmd+alt+c",
-        "when": "editorTextFocus"
+        "when": "editorTextFocus && !isWeb"
       },
       {
         "command": "vyuha.debugVisualize",
         "key": "ctrl+alt+d",
         "mac": "cmd+alt+d",
-        "when": "editorTextFocus"
+        "when": "editorTextFocus && !isWeb"
       }
     ],
     "viewsContainers": {
@@ -281,22 +292,25 @@
     "viewsWelcome": [
       {
         "view": "vyuha.layers",
-        "contents": "Nothing is being visualized yet.\n\nOpen any source file and run it:\n[Run and Visualize](command:vyuha.runAndVisualize)\n\nYour program draws itself by printing one line per frame:\n`@vyuha {\"kind\":\"tree\",\"nodes\":[...],\"edges\":[...]}`\n\n[Add helper library](command:vyuha.addHelperLibrary)\n[Open an example](command:vyuha.openExample)\n[New network spec](command:vyuha.newSpecFile)"
+        "contents": "Nothing is being visualized yet.\n\nOpen any source file and run it:\n[Run and Visualize](command:vyuha.runAndVisualize) *(desktop only)*\n\nOr open a graph spec / trace file to visualize:\n[New network spec](command:vyuha.newSpecFile)\n[Open an example](command:vyuha.openExample)\n[Add helper library](command:vyuha.addHelperLibrary)\n\n*On vscode.dev: program execution needs desktop VS Code. Visualization works here.*"
       }
     ],
     "menus": {
       "editor/title/run": [
         {
           "command": "vyuha.runAndVisualize",
-          "group": "navigation@1"
+          "group": "navigation@1",
+          "when": "!isWeb"
         },
         {
           "command": "vyuha.visualizeCompilation",
-          "group": "navigation@2"
+          "group": "navigation@2",
+          "when": "!isWeb"
         },
         {
           "command": "vyuha.debugVisualize",
-          "group": "navigation@3"
+          "group": "navigation@3",
+          "when": "!isWeb"
         }
       ],
       "editor/title": [
@@ -309,36 +323,41 @@
       "editor/context": [
         {
           "command": "vyuha.runAndVisualize",
-          "group": "vyuha@1"
+          "group": "vyuha@1",
+          "when": "!isWeb"
         },
         {
           "command": "vyuha.visualizeCompilation",
-          "group": "vyuha@2"
+          "group": "vyuha@2",
+          "when": "!isWeb"
         },
         {
           "command": "vyuha.runSelection",
-          "when": "editorHasSelection",
+          "when": "editorHasSelection && !isWeb",
           "group": "vyuha@3"
         },
         {
           "command": "vyuha.debugVisualize",
-          "group": "vyuha@4"
+          "group": "vyuha@4",
+          "when": "!isWeb"
         }
       ],
       "explorer/context": [
         {
           "command": "vyuha.runAndVisualize",
-          "group": "vyuha@1"
+          "group": "vyuha@1",
+          "when": "!isWeb"
         },
         {
           "command": "vyuha.visualizeCompilation",
-          "group": "vyuha@2"
+          "group": "vyuha@2",
+          "when": "!isWeb"
         }
       ],
       "view/title": [
         {
           "command": "vyuha.runAndVisualize",
-          "when": "view == vyuha.layers",
+          "when": "view == vyuha.layers && !isWeb",
           "group": "navigation@1"
         },
         {
@@ -368,7 +387,7 @@
         },
         {
           "command": "vyuha.stopRun",
-          "when": "view == vyuha.layers",
+          "when": "view == vyuha.layers && !isWeb",
           "group": "1_run"
         },
         {
@@ -564,8 +583,9 @@
   "scripts": {
     "vendor": "node scripts/vendor-three.js",
     "compile": "tsc -p ./",
+    "compile:web": "esbuild src/web/extension.ts --bundle --platform=browser --format=cjs --outfile=dist/web/extension.js --external:vscode --target=es2020 --sourcemap",
     "watch": "tsc -watch -p ./",
-    "vscode:prepublish": "npm run vendor && npm run compile",
+    "vscode:prepublish": "npm run vendor && npm run compile && npm run compile:web",
     "package": "vsce package",
     "test": "node tests/render-smoke.js && node tests/ds-smoke.js && node tests/runner-test.js && node tests/auto-test.js && node tests/compiler-test.js && node tests/v4-test.js && node tests/interpreters-test.js && node tests/stability-test.js",
     "verify": "npm run vendor && npm run compile && npm test",
@@ -574,6 +594,7 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.84.0",
+    "esbuild": "^0.23.0",
     "jsdom": "^24.0.0",
     "three": "0.128.0",
     "typescript": "^5.3.3"

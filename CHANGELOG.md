@@ -1,5 +1,46 @@
 # Changelog
 
+## 4.3.0 — 2026-10-20 · stable
+
+**Web support (vscode.dev / GitHub Codespaces)**
+
+VYUHA now runs in the browser. Open any `.vyuha.json` or `.netgraph.json` file on [vscode.dev](https://vscode.dev) or in GitHub Codespaces and get the full visualization experience.
+
+### What works on the web ✅
+- **Graph Spec Editor** — Open `.vyuha.json` / `.netgraph.json` files in the custom editor
+- **Neural Network Visualization** — Three.js 3D view, inference, new input, trace decision path
+- **Data Structure Visualization** — From loaded traces (`@vyuha` prints), timeline playback
+- **Layer Tree View** — Sidebar with activations, double-tap to reveal source line
+- **Export Trace / GIF** — Save traces as JSON, export animations as GIF
+- **Fetch Live Trace** — Pull activations from an HTTP endpoint (uses browser `fetch`)
+- **Helper Libraries** — Add Python, JavaScript, Java, C++, C, Go helpers to your project
+- **Bundled Examples** — Open example specs and trace files
+- **Configuration / Settings** — All `vyuha.*` settings work
+
+### Desktop-only (hidden on web) ❌
+| Command | Reason |
+|---------|--------|
+| Run and Visualize (`vyuha.runAndVisualize`) | Requires `child_process`, shell, real compilers |
+| Stop Run (`vyuha.stopRun`) | Requires active terminal/process |
+| Re-run (`vyuha.rerun`) | Requires previous run |
+| Visualize Compilation (`vyuha.visualizeCompilation`) | Requires `gcc`, `javac`, `python`, etc. |
+| Debug Visualize (`vyuha.debugVisualize`) | Requires `gdb` / `jdb` / Python tracer |
+| Run Selection (`vyuha.runSelection`) | Requires temp file + runner |
+| Run By Language (`vyuha.runByLanguage`) | Requires temp file + runner |
+| Open Compiler Artifact (`vyuha.openCompileArtifact`) | Requires compiler pipeline artifacts |
+
+If a desktop-only command is triggered on the web (via keybinding or palette), a clear message appears: *"This feature needs VS Code Desktop (it runs real compilers). Visualization works here."*
+
+### Technical
+- New `browser` entry point in `package.json` → `dist/web/extension.js`
+- Web build via esbuild (`compile:web` script), `--platform=browser` excludes Node built-ins
+- `src/web/extension.ts` registers only web-compatible commands (17 commands)
+- `src/fetchLiveTrace.ts` replaces `http`/`https` with global `fetch()`
+- `src/codegraph.ts` inlines `path.basename`/`extname` (no Node `path` import)
+- `vscode:prepublish` builds both desktop and web targets
+
+---
+
 ## 4.2.0 — 2026-10-13 · stable
 
 A stability release: a new 158-check test (`tests/stability-test.js`) went over

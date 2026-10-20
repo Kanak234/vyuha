@@ -17,8 +17,22 @@
  * node in a picture, and that is a far better failure than refusing to draw.
  */
 
-import * as path from 'path';
 import { VEdge, VFrame, VNode, NodeState } from './protocol';
+
+/** Tiny path helpers — no Node 'path' module, so this file works in browser builds. */
+function extname(file: string): string {
+  const i = file.lastIndexOf('.');
+  const s = file.lastIndexOf('/');
+  const b = file.lastIndexOf('\\');
+  const lastSep = Math.max(s, b);
+  return i > lastSep ? file.slice(i) : '';
+}
+function basename(file: string): string {
+  const s = file.lastIndexOf('/');
+  const b = file.lastIndexOf('\\');
+  const lastSep = Math.max(s, b);
+  return file.slice(lastSep + 1);
+}
 
 export type CodeKind = 'file' | 'func' | 'loop' | 'branch' | 'out' | 'read' | 'return' | 'class';
 
@@ -55,7 +69,7 @@ const FAMILY: Record<string, string> = {
 };
 
 export function languageOf(file: string): string {
-  const ext = path.extname(file).replace(/^\./, '').toLowerCase();
+  const ext = extname(file).replace(/^\./, '').toLowerCase();
   return FAMILY[ext] || ext || 'text';
 }
 
@@ -110,7 +124,7 @@ const MAX_NODES = 90;
  */
 export function analyzeSource(file: string, source: string): CodeGraph {
   const language = languageOf(file);
-  const base = path.basename(file);
+  const base = basename(file);
   const fileId = 'file';
   const nodes: CodeNode[] = [{ id: fileId, label: base, kind: 'file', line: 1 }];
   const edges: { from: string; to: string; label?: string }[] = [];
@@ -416,7 +430,7 @@ export function autoFrame(cg: CodeGraph, stages: Stage[], st: AutoState): VFrame
 
   return {
     kind: 'graph',
-    title: st.title || path.basename(cg.file),
+    title: st.title || basename(cg.file),
     note: st.note,
     nodes,
     edges,
