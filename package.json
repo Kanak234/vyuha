@@ -4,7 +4,7 @@
   "description": "Run your code in any language and watch it draw itself in 3D — every program, even one that prints only hello world.",
   "version": "4.3.1",
   "publisher": "KANAKPRABHAKAR",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "icon": "media/icon.png",
   "galleryBanner": {
     "color": "#070a11",
