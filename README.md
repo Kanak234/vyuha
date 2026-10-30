@@ -4,7 +4,7 @@
 
 **व्यूह** — an arranged formation. Run your code in any language and watch the structure it builds, in 3D, inside VS Code.
 
-![runs on any language](https://img.shields.io/badge/languages-50%2B-38e8ff) ![no telemetry](https://img.shields.io/badge/telemetry-none-35f0a8)
+![runs on any language](https://img.shields.io/badge/languages-50%2B-38e8ff) ![no telemetry](https://img.shields.io/badge/telemetry-none-35f0a8) [![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/Kanak234/badge.svg)](https://hub.xerj.org/contributors/Kanak234)
 
 ---
 
